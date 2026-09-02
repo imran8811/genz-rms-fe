@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: #f7f7f8;
+  color: #1f1f1f;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ----- Receipt soft-copy preview (photo of a thermal print) ----- */
+.receipt-photo {
+  /* drop-shadow follows the torn (masked) paper silhouette, unlike box-shadow */
+  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.5));
+}
+.receipt-paper {
+  position: relative;
+  color: #1a1a1a;
+  font-family: "Courier New", ui-monospace, monospace;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.02) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #fffdf8, #fbf6ea);
+}
+/* torn top & bottom edges via sawtooth SVG strips coloured to match the paper */
+.receipt-paper::before,
+.receipt-paper::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9px;
+  background-repeat: repeat-x;
+  background-size: 18px 9px;
+}
+.receipt-paper::before {
+  top: -8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='9'%3E%3Cpath d='M0 9 L9 0 L18 9 Z' fill='%23fffdf8'/%3E%3C/svg%3E");
+}
+.receipt-paper::after {
+  bottom: -8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='9'%3E%3Cpath d='M0 0 L9 9 L18 0 Z' fill='%23fbf6ea'/%3E%3C/svg%3E");
+}
+
+/* ----- Print: 80mm thermal receipt ----- */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #receipt,
+  #receipt * {
+    visibility: visible;
+  }
+  #receipt {
+    position: static;
+    width: 80mm;
+    padding: 4mm 4mm 6mm;
+    color: #000;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 11pt;
+    line-height: 1.3;
+  }
+}
+
+/* ----- Print: Payroll sheet ----- */
+@media print {
+  body.print-payroll * {
+    visibility: hidden;
+  }
+  body.print-payroll .print-area,
+  body.print-payroll .print-area * {
+    visibility: visible;
+  }
+  body.print-payroll .print-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 16px;
+    background: #fff;
+  }
+  body.print-payroll .no-print {
+    display: none !important;
+  }
+}

@@ -1,0 +1,210 @@
+{
+  "version": 3,
+  "restaurant": {
+    "name": "Gen Z Foods",
+    "tagline": "Premium Fast Food Restaurant",
+    "address": "Garden Town, Sher Shah Road, Multan",
+    "phone": "03 000-911-000",
+    "whatsapp": "03 000-911-000",
+    "timing": "02:00 PM - 2:00 AM",
+    "features": [
+      "Family Hall",
+      "Relax Environment",
+      "Roof Top Sitting",
+      "Professional Riders",
+      "Quick Delivery",
+      "Take Away",
+      "Dine In",
+      "Quick Services"
+    ]
+  },
+  "currency": {
+    "code": "PKR",
+    "symbol": "Rs"
+  },
+  "categories": [
+    {
+      "id": "pizza",
+      "name": "Pizza",
+      "type": "sized",
+      "sizes": ["Small", "Medium", "Large"],
+      "items": [
+        { "id": "pizza-special-margarita", "name": "Special Margarita Pizza", "prices": { "Small": 500, "Medium": 700, "Large": 900 } },
+        { "id": "pizza-cheese-lover", "name": "Cheese Lover Pizza", "prices": { "Small": 500, "Medium": 700, "Large": 900 } },
+        { "id": "pizza-western-veg", "name": "Western Veg Pizza", "prices": { "Small": 500, "Medium": 700, "Large": 900 } },
+        { "id": "pizza-fajita", "name": "Fajita Pizza", "prices": { "Small": 500, "Medium": 800, "Large": 1250 } },
+        { "id": "pizza-pepperoni", "name": "Pepperoni Pizza", "prices": { "Small": 500, "Medium": 800, "Large": 1250 } },
+        { "id": "pizza-mexican", "name": "Mexican Pizza", "prices": { "Small": 500, "Medium": 800, "Large": 1250 } },
+        { "id": "pizza-classic-tikka", "name": "Classic Tikka", "prices": { "Small": 500, "Medium": 800, "Large": 1250 } },
+        { "id": "pizza-creamy-tikka", "name": "Creamy Tikka Pizza", "prices": { "Small": 520, "Medium": 800, "Large": 1300 } },
+        { "id": "pizza-kabab-special", "name": "Kabab Special Pizza", "prices": { "Small": null, "Medium": 800, "Large": 1300 } },
+        { "id": "pizza-bonfire", "name": "Bonfire Pizza", "prices": { "Small": 500, "Medium": 800, "Large": 1300 } },
+        { "id": "pizza-fried-italian", "name": "Fried Italian Pizza", "prices": { "Small": null, "Medium": 850, "Large": 1300 } },
+        { "id": "pizza-crown-crust", "name": "Crown Crust Pizza", "prices": { "Small": null, "Medium": 1200, "Large": 1800 }, "special": true },
+        { "id": "pizza-kabab-crust", "name": "Kabab Crust Pizza", "prices": { "Small": null, "Medium": 1200, "Large": 1800 }, "special": true },
+        { "id": "pizza-extreme", "name": "Extreme Pizza", "prices": { "Small": null, "Medium": 1200, "Large": 1800 }, "special": true },
+        { "id": "pizza-deep-dish", "name": "Deep Dish Pizza", "prices": { "Small": null, "Medium": 1200, "Large": 1800 }, "special": true },
+        { "id": "pizza-gen-z-special", "name": "Gen Z Special Pizza", "prices": { "Small": null, "Medium": 1200, "Large": 1800 }, "special": true, "signature": true }
+      ]
+    },
+    {
+      "id": "burgers",
+      "name": "Burgers",
+      "type": "single",
+      "items": [
+        { "id": "burger-zinger", "name": "Zinger Burger", "price": 400 },
+        { "id": "burger-chicken-patty", "name": "Chicken Patty Burger", "price": 420 },
+        { "id": "burger-zinger-cheese", "name": "Zinger Cheese Burger", "price": 450 },
+        { "id": "burger-crispy-chicken-fillet", "name": "Crispy Chicken Fillet Burger", "price": 450 },
+        { "id": "burger-korean-style", "name": "Korean Style Burger", "price": 550 },
+        { "id": "burger-pizza-burger", "name": "Pizza Burger", "price": 550 },
+        { "id": "burger-chicken-grill", "name": "Chicken Grill Burger", "price": 800 },
+        { "id": "burger-beef-smash", "name": "Beef Smash Burger", "price": 800 },
+        { "id": "burger-chicken-mighty", "name": "Chicken Mighty Burger", "price": 800 }
+      ]
+    },
+    {
+      "id": "wraps",
+      "name": "Wraps",
+      "type": "single",
+      "items": [
+        { "id": "wrap-mexican", "name": "Mexican Wrap", "price": 500 },
+        { "id": "wrap-grill", "name": "Grill Wrap", "price": 500 },
+        { "id": "wrap-crunch", "name": "Crunch Wrap", "price": 550 },
+        { "id": "wrap-beef", "name": "Beef Wrap", "price": 600 }
+      ]
+    },
+    {
+      "id": "sandwich",
+      "name": "Sandwich",
+      "type": "single",
+      "items": [
+        { "id": "sandwich-club", "name": "Club Sandwich", "price": 600 },
+        { "id": "sandwich-crunch", "name": "Crunch Sandwich", "price": 600 },
+        { "id": "sandwich-peri-peri-chicken-cheese", "name": "Peri Peri Chicken Cheese Sandwich", "price": 600 },
+        { "id": "sandwich-mexican", "name": "Mexican Sandwich", "price": 600 },
+        { "id": "sandwich-grilled", "name": "Grilled Sandwich", "price": 650 }
+      ]
+    },
+    {
+      "id": "cold-drinks",
+      "name": "Cold Drinks",
+      "type": "sized",
+      "sizes": ["350ml", "500ml", "1Ltr", "1.5Ltr"],
+      "items": [
+        { "id": "drink-coca-cola", "name": "Coca Cola", "prices": { "350ml": 80, "500ml": 120, "1Ltr": 180, "1.5Ltr": 220 } },
+        { "id": "drink-sprite-cola", "name": "Sprite Cola", "prices": { "350ml": 80, "500ml": 120, "1Ltr": 180, "1.5Ltr": 220 } },
+        { "id": "drink-next-cola", "name": "Next Cola", "prices": { "350ml": 60, "500ml": 90, "1Ltr": 130, "1.5Ltr": 160 } },
+        { "id": "drink-water", "name": "Water", "prices": { "500ml": 50, "1Ltr": 100 }, "defaultSize": "1Ltr" }
+      ]
+    },
+    {
+      "id": "paratha-roll",
+      "name": "Paratha Roll",
+      "type": "single",
+      "items": [
+        { "id": "roll-kababish-cheese", "name": "Kababish Cheese Roll", "price": 300 },
+        { "id": "roll-tender-chicken", "name": "Tender Chicken Roll", "price": 300 },
+        { "id": "roll-chicken-pratha", "name": "Chicken Pratha Roll", "price": 300 },
+        { "id": "roll-crispy-chicken", "name": "Crispy Chicken Roll", "price": 350 }
+      ]
+    },
+    {
+      "id": "starters",
+      "name": "Starters",
+      "type": "single",
+      "items": [
+        { "id": "starter-fries-regular", "name": "French Fries (Regular)", "price": 280 },
+        { "id": "starter-fries-family", "name": "French Fries (Family)", "price": 500 },
+        { "id": "starter-masala-fries", "name": "Masala Fries", "price": 300 },
+        { "id": "starter-loaded-fries", "name": "Loaded Fries", "price": 600 },
+        { "id": "starter-garlic-mayo-fries", "name": "Garlic Mayo Fries", "price": 320 },
+        { "id": "starter-crispy-wings-6", "name": "Crispy Wings (6pcs)", "price": 500 },
+        { "id": "starter-honey-mustard-wings-6", "name": "Honey Mustard Wings (6pcs)", "price": 550 },
+        { "id": "starter-bbq-wings-6", "name": "BBQ Wings (6pcs)", "price": 550 },
+        { "id": "starter-chipotle-wings-6", "name": "Chipotle Wings (6pcs)", "price": 550 },
+        { "id": "starter-crispy-nuggets-6", "name": "Crispy Nuggets (6pcs)", "price": 300 },
+        { "id": "starter-chicken-crispy-candy-3", "name": "Chicken Crispy Candy (3pcs)", "price": 450 },
+        { "id": "starter-chicken-crispy-bites-12", "name": "Chicken Crispy Bites (12pcs)", "price": 300 },
+        { "id": "starter-crispy-thai-boneless", "name": "Crispy Thai Boneless", "price": 300 },
+        { "id": "starter-garlic-cheese-bread-4", "name": "Garlic Cheese Bread (4pcs)", "price": 250 }
+      ]
+    },
+    {
+      "id": "pasta",
+      "name": "Pasta",
+      "type": "sized",
+      "sizes": ["Half", "Full"],
+      "items": [
+        { "id": "pasta-crunch", "name": "Crunch Pasta", "prices": { "Half": 300, "Full": 500 } },
+        { "id": "pasta-flaming", "name": "Flaming Pasta", "prices": { "Half": 300, "Full": 500 } },
+        { "id": "pasta-cream-kick", "name": "Cream Kick Pasta", "prices": { "Half": 300, "Full": 500 } },
+        { "id": "pasta-moroccan", "name": "Moroccan Pasta", "prices": { "Half": null, "Full": 900 } },
+        { "id": "pasta-fettuccine-alfred", "name": "Fettuccine Alfred Pasta", "prices": { "Half": null, "Full": 900 } },
+        { "id": "pasta-american-cheese", "name": "American Cheese Pasta", "prices": { "Half": null, "Full": 1000 } }
+      ]
+    },
+    {
+      "id": "dips",
+      "name": "Dips",
+      "type": "single",
+      "items": [
+        { "id": "dip-chipotle", "name": "Chipotle", "price": 80 },
+        { "id": "dip-hot-cocktail", "name": "Hot Cocktail", "price": 80 },
+        { "id": "dip-peri-peri", "name": "Peri Peri", "price": 80 },
+        { "id": "dip-honey-mustard", "name": "Honey Mustard", "price": 80 },
+        { "id": "dip-garlic-sauce", "name": "Garlic Sauce", "price": 80 }
+      ]
+    },
+    {
+      "id": "pizza-deals",
+      "name": "Pizza Deals",
+      "type": "single",
+      "items": [
+        { "id": "deal-1", "name": "Deal 1", "price": 550, "description": "1 Small Pizza + Drink 345ml", "dealExtras": ["Drink 345ml"], "pizzaSelection": { "size": "Small", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-2", "name": "Deal 2", "price": 850, "description": "1 Medium Pizza + Drink 1Ltr", "dealExtras": ["Drink 1Ltr"], "pizzaSelection": { "size": "Medium", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-3", "name": "Deal 3", "price": 1350, "description": "1 Large Pizza + Drink 1.5Ltr", "dealExtras": ["Drink 1.5Ltr"], "pizzaSelection": { "size": "Large", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-4", "name": "Deal 4", "price": 3900, "description": "3 Large Pizza + 2 Drink 1.5Ltr", "dealExtras": ["2x Drink 1.5Ltr"], "pizzaSelection": { "size": "Large", "count": 3, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-5", "name": "Deal 5", "price": 5000, "description": "4 Large Pizza + 2 Drink 1.5Ltr", "dealExtras": ["2x Drink 1.5Ltr"], "pizzaSelection": { "size": "Large", "count": 4, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-6", "name": "Deal 6", "price": 6500, "description": "5 Large Pizza + 3 Drink 1.5Ltr", "dealExtras": ["3x Drink 1.5Ltr"], "pizzaSelection": { "size": "Large", "count": 5, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka"] } },
+        { "id": "deal-7", "name": "Deal 7", "price": 1900, "description": "1 Gen Z Sp Large + Drink 1.5Ltr", "dealExtras": ["Drink 1.5Ltr"], "tag": "Special", "pizzaSelection": { "size": "Large", "count": 1, "from": ["pizza-gen-z-special"] } },
+        { "id": "deal-8", "name": "Deal 8", "price": 5000, "description": "3 Gen Z Sp Large + 2 Drink 1.5Ltr", "dealExtras": ["2x Drink 1.5Ltr"], "tag": "Special", "pizzaSelection": { "size": "Large", "count": 3, "from": ["pizza-gen-z-special"] } },
+        { "id": "deal-9", "name": "Deal 9", "price": 1800, "description": "1 Any Sp Large + Drink 1.5Ltr", "dealExtras": ["Drink 1.5Ltr"], "tag": "Special", "pizzaSelection": { "size": "Large", "count": 1, "from": ["pizza-crown-crust", "pizza-kabab-crust", "pizza-extreme", "pizza-deep-dish"] } }
+      ]
+    },
+    {
+      "id": "burger-deals",
+      "name": "Burger Deals",
+      "type": "single",
+      "items": [
+        { "id": "deal-10", "name": "Deal 10", "price": 550, "description": "1 Zinger Burger + 1 Reg Fries + Drink 345ml", "dealExtras": ["1 Zinger Burger", "1 Reg Fries", "Drink 345ml"] },
+        { "id": "deal-11", "name": "Deal 11", "price": 1350, "description": "3 Zinger Burger + 1 Regular Fries + Drink 1.5Ltr", "dealExtras": ["3 Zinger Burger", "1 Regular Fries", "Drink 1.5Ltr"] },
+        { "id": "deal-12", "name": "Deal 12", "price": 2000, "description": "4 Zinger Burger + 1 Reg Fries + 2 Drink 1Ltr", "dealExtras": ["4 Zinger Burger", "1 Reg Fries", "2x Drink 1Ltr"] },
+        { "id": "deal-13", "name": "Deal 13", "price": 2750, "description": "5 Zinger Burger + 1 Family Fries + 2 Drink 1.5Ltr", "dealExtras": ["5 Zinger Burger", "1 Family Fries", "2x Drink 1.5Ltr"] },
+        { "id": "deal-19", "name": "2 Zinger Deal", "price": 1000, "description": "2 Zinger Burger + 1 Reg Fries + 2 Drink 345ml", "dealExtras": ["2 Zinger Burger", "1 Reg Fries", "2x Drink 345ml"] },
+        { "id": "deal-20", "name": "5 Zinger Deal", "price": 2000, "description": "5 Zinger Burger + 1 Reg Fries + Drink 1.5Ltr", "dealExtras": ["5 Zinger Burger", "1 Reg Fries", "Drink 1.5Ltr"] }
+      ]
+    },
+    {
+      "id": "pizza-burger-deals",
+      "name": "Pizza + Burger Deals",
+      "type": "single",
+      "items": [
+        { "id": "deal-21", "name": "Small Pizza + Zinger", "price": 850, "description": "1 Small Pizza + 1 Zinger Burger + Drink 500ml", "dealExtras": ["1 Zinger Burger", "Drink 500ml"], "pizzaSelection": { "size": "Small", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka", "pizza-creamy-tikka", "pizza-bonfire"] } },
+        { "id": "deal-22", "name": "Medium Pizza + Zinger", "price": 1100, "description": "1 Medium Pizza + 1 Zinger Burger + Drink 500ml", "dealExtras": ["1 Zinger Burger", "Drink 500ml"], "pizzaSelection": { "size": "Medium", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka", "pizza-creamy-tikka", "pizza-bonfire"] } },
+        { "id": "deal-23", "name": "Large Pizza + Zinger", "price": 1650, "description": "1 Large Pizza + 1 Zinger Burger + Drink 1Ltr", "dealExtras": ["1 Zinger Burger", "Drink 1Ltr"], "pizzaSelection": { "size": "Large", "count": 1, "from": ["pizza-special-margarita", "pizza-cheese-lover", "pizza-western-veg", "pizza-fajita", "pizza-pepperoni", "pizza-mexican", "pizza-classic-tikka", "pizza-creamy-tikka", "pizza-bonfire"] } }
+      ]
+    },
+    {
+      "id": "beef-burger-deals",
+      "name": "Beef Burger Deals",
+      "type": "single",
+      "items": [
+        { "id": "deal-14", "name": "Deal 14", "price": 820, "description": "1 Beef Patty Smash Burger + Drink 345ml", "dealExtras": ["1 Beef Patty Smash Burger", "Drink 345ml"] },
+        { "id": "deal-15", "name": "Deal 15", "price": 1050, "description": "1 Beef Mighty Smash Burger + Drink 500ml", "dealExtras": ["1 Beef Mighty Smash Burger", "Drink 500ml"] },
+        { "id": "deal-16", "name": "Deal 16", "price": 2400, "description": "3 Beef Smash Burger + Drink 1.5Ltr", "dealExtras": ["3 Beef Smash Burger", "Drink 1.5Ltr"] },
+        { "id": "deal-17", "name": "Deal 17", "price": 1050, "description": "1 Full Pasta + 6 Crispy Wings + Drink 1Ltr", "dealExtras": ["1 Full Pasta", "6 Crispy Wings", "Drink 1Ltr"] }
+      ]
+    }
+  ]
+}
