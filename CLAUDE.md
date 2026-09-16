@@ -294,6 +294,23 @@ records "this one rang". If that distinction ever has to be exact, it needs its 
 - The table's `colSpan` / `LoadingRow cols` are hardcoded — they moved 7 → 8 with this column, and
   must move again if another is added, or the empty and loading rows misalign.
 
+### Tinted rows = money that never reached the drawer
+
+Two kinds of order row are tinted end to end, and both mean the same thing: this bill is in the
+revenue figure but not in the cash the counter counts, so it is worth spotting without reading it.
+- **Food Panda → pink** (`source === "foodpanda"`). Paid through the app.
+- **Staff food → amber** — the same amber as the **Staff Food** stat card above, so the rows and the
+  figure read as one thing. Charged to a salary, and already subtracted from the Cash card.
+
+⚠ **Staff food is sniffed from `notes`, because nothing on `orders` records it.** A staff meal is
+rung up as an ordinary `pos` order; the POS separately posts the same lines to `/staff-food`, and
+the only trace left on the order is the instruction `BillPanel` writes so the slip prints it —
+`Staff Food: <name>`. `isStaffFood()` in `app/(rms)/sales/page.tsx` matches that prefix, which means
+a note typed by hand tints too and a note edited away stops tinting. **It is indicative, not exact.**
+Making it exact needs a `staff_id` (or a flag) on `orders`, set at the till — the same shape of fix
+as the Walk-in/WhatsApp distinction above. The **stat card and the Cash figure are not affected**:
+those come from `staff_food_logs` via `GET /sales/summary` and are real.
+
 ## Sales (`/sales`) on a phone
 
 The date nav is a **desktop control**. The page header (title + date arrows/picker + the four

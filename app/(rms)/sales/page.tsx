@@ -122,6 +122,29 @@ function originOf(o: { order_type: OrderType; source?: OrderSource }): OrderOrig
   }
 }
 
+/**
+ * A staff meal, rung up at the till like any other bill.
+ *
+ * **There is no column for it.** The POS saves an ordinary `pos` order *and*
+ * charges the same lines to `staff_food_logs`; the only thing left on the order
+ * row is the instruction the bill panel writes so the slip prints it —
+ * `Staff Food: <name>` (see `components/BillPanel.tsx`). Sniffing that prefix is
+ * therefore all that's available, with the obvious limits: a bill someone types
+ * it into by hand tints too, and one where the cashier edited the note away
+ * won't. A `staff_id` (or a `source`/flag) on `orders` is the durable fix if
+ * this ever has to be exact rather than indicative.
+ */
+const STAFF_FOOD_NOTE = "Staff Food:";
+
+function isStaffFood(o: { notes?: string | null }): boolean {
+  return (o.notes ?? "").trimStart().startsWith(STAFF_FOOD_NOTE);
+}
+
+/** Who the meal was charged to — for the row's tooltip, so the tint explains itself. */
+function staffFoodName(o: { notes?: string | null }): string {
+  return (o.notes ?? "").trimStart().slice(STAFF_FOOD_NOTE.length).trim();
+}
+
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function fmt(n: number) { return "Rs" + n.toLocaleString("en-PK"); }
 function fmtDate(iso: string) {
@@ -473,9 +496,25 @@ export default function SalesPage() {
                   : displayed.map((order) => (
                     // Food Panda rows are tinted end to end so they're countable
                     // at a glance when reconciling the drawer against the app.
-                    <tr key={order.id} className={`transition-colors ${
-                      order.source === "foodpanda" ? "bg-pink-50 hover:bg-pink-100" : "hover:bg-gray-50"
-                    }`}>
+                    // Staff meals get the same treatment in amber — that money
+                    // never reaches the drawer either (it comes off a salary),
+                    // and amber is what the Staff Food card above is, so the
+                    // rows and the figure read as the same thing.
+                    <tr
+                      key={order.id}
+                      title={
+                        isStaffFood(order)
+                          ? `Staff food — charged to ${staffFoodName(order) || "a staff member"}`
+                          : undefined
+                      }
+                      className={`transition-colors ${
+                        order.source === "foodpanda"
+                          ? "bg-pink-50 hover:bg-pink-100"
+                          : isStaffFood(order)
+                            ? "bg-amber-50 hover:bg-amber-100"
+                            : "hover:bg-gray-50"
+                      }`}
+                    >
                       <td className="px-3 py-1.5 font-mono text-gray-700">{order.order_number}</td>
                       <td className="px-3 py-1.5">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor[channelOf(order)]}`}>
