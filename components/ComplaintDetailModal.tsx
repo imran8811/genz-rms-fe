@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { isKitchenUser, useAuth } from "@/lib/auth";
 import { formatPKR } from "@/lib/currency";
 import type { KitchenOrder, OrderComplaint } from "@/lib/types";
 
@@ -74,9 +74,11 @@ export default function ComplaintDetailModal({
   onDeleted,
 }: Props) {
   const { user } = useAuth();
-  // Delete is admin-only. The API is the actual gate (403); this only keeps the
-  // counter from being offered a button that would slam.
+  // Delete is admin-only, and the kitchen may read this register but not work
+  // it. The API is the actual gate (403) in both cases; these only keep someone
+  // from being offered a button that would slam.
   const isAdmin = user?.role === "admin";
+  const isKitchen = isKitchenUser(user);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
   /** Which complaint is having a closing note written, and what it says. */
@@ -226,74 +228,81 @@ export default function ComplaintDetailModal({
                       </div>
                     )}
 
-                    {/* Actions */}
-                    <div className="mt-3">
-                      {closing?.id === complaint.id ? (
-                        <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <label className="mb-1.5 block text-xs font-medium text-gray-500">
-                            What was done about it? (optional)
-                          </label>
-                          <textarea
-                            value={closing.note}
-                            onChange={(e) => setClosing({ id: complaint.id, note: e.target.value })}
-                            rows={2}
-                            maxLength={500}
-                            placeholder="e.g. Remade and delivered, customer happy."
-                            className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
-                          />
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              onClick={() => setClosing(null)}
-                              className="flex-1 rounded-lg border border-gray-200 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() =>
-                                act(complaint, "resolve", { resolution: closing.note.trim() || null })
-                              }
-                              disabled={busyId === complaint.id}
-                              className="flex-1 rounded-lg bg-emerald-600 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                            >
-                              {busyId === complaint.id ? "Saving…" : "Mark resolved"}
-                            </button>
+                    {/* Actions. None for a kitchen login: it is reading the
+                        register, not working it. Resolving and reopening are
+                        the front desk's calls and 403 for it, and the board it
+                        actually works from is where it acknowledges one. */}
+                    {!isKitchen && (
+                      <div className="mt-3">
+                        {closing?.id === complaint.id ? (
+                          <div className="rounded-lg border border-gray-200 bg-white p-3">
+                            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                              What was done about it? (optional)
+                            </label>
+                            <textarea
+                              value={closing.note}
+                              onChange={(e) => setClosing({ id: complaint.id, note: e.target.value })}
+                              rows={2}
+                              maxLength={500}
+                              placeholder="e.g. Remade and delivered, customer happy."
+                              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+                            />
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => setClosing(null)}
+                                className="flex-1 rounded-lg border border-gray-200 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() =>
+                                  act(complaint, "resolve", {
+                                    resolution: closing.note.trim() || null,
+                                  })
+                                }
+                                disabled={busyId === complaint.id}
+                                className="flex-1 rounded-lg bg-emerald-600 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                {busyId === complaint.id ? "Saving…" : "Mark resolved"}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          {resolved ? (
-                            <button
-                              onClick={() => act(complaint, "reopen")}
-                              disabled={busyId === complaint.id}
-                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 disabled:opacity-50"
-                            >
-                              {busyId === complaint.id ? "…" : "Reopen"}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setClosing({ id: complaint.id, note: "" })}
-                              className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
-                            >
-                              Mark resolved
-                            </button>
-                          )}
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            {resolved ? (
+                              <button
+                                onClick={() => act(complaint, "reopen")}
+                                disabled={busyId === complaint.id}
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 disabled:opacity-50"
+                              >
+                                {busyId === complaint.id ? "…" : "Reopen"}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setClosing({ id: complaint.id, note: "" })}
+                                className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
+                              >
+                                Mark resolved
+                              </button>
+                            )}
 
-                          {/* Sits apart from the workflow buttons, and is quiet
-                              until hovered: closing a complaint is the normal
-                              ending, deleting one is admitting it shouldn't
-                              have been logged. */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => remove(complaint)}
-                              disabled={busyId === complaint.id}
-                              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            >
-                              {busyId === complaint.id ? "…" : "Delete"}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                            {/* Sits apart from the workflow buttons, and is
+                                quiet until hovered: closing a complaint is the
+                                normal ending, deleting one is admitting it
+                                shouldn't have been logged. */}
+                            {isAdmin && (
+                              <button
+                                onClick={() => remove(complaint)}
+                                disabled={busyId === complaint.id}
+                                className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                              >
+                                {busyId === complaint.id ? "…" : "Delete"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

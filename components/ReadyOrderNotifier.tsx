@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
+import { isKitchenUser, useAuth } from "@/lib/auth";
 import type { KitchenFeed, KitchenOrder } from "@/lib/types";
 import { clockTime } from "@/components/OrderSlip";
 
@@ -27,7 +28,9 @@ import { clockTime } from "@/components/OrderSlip";
  * online-order alarm — it must never cover an order still waiting to be verified.
  *
  * Stays quiet on `/orders`: the kitchen board already shows these slips, and the
- * person who pressed "Ready" doesn't need telling.
+ * person who pressed "Ready" doesn't need telling. Quiet for a **kitchen login**
+ * anywhere, for the same reason — it can now open `/complaints`, and this alert
+ * is the kitchen talking to the front desk, not to itself.
  */
 
 const POLL_MS = 10000;
@@ -46,7 +49,8 @@ function summarise(order: KitchenOrder): string {
 
 export default function ReadyOrderNotifier() {
   const pathname = usePathname();
-  const enabled = !pathname.startsWith("/orders");
+  const { user } = useAuth();
+  const enabled = !pathname.startsWith("/orders") && !isKitchenUser(user);
 
   const [toasts, setToasts] = useState<ReadyToast[]>([]);
 

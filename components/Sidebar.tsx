@@ -79,12 +79,14 @@ const navGroups: {
         ),
       },
       {
-        // Deliberately NOT `kitchen: true`: the kitchen is *told* about
-        // complaints on its own board (the ⚠ Complaints tab) and can only
-        // acknowledge them. The register — and closing one off — is the front
-        // desk's, and the API 403s a kitchen login on this feed.
+        // `kitchen: true`, but read-only for that login: its own board's ⚠ tab
+        // only covers today, and looking back over a run of complaints is a
+        // kitchen question. Closing one off is still the front desk's and
+        // deleting one is the admin's — both are hidden for the kitchen in the
+        // detail modal, and the API 403s it on them either way.
         href: "/complaints",
         label: "Complaints",
+        kitchen: true,
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 flex-shrink-0">
             <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>

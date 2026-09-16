@@ -13,14 +13,19 @@ Package name: `genz-foods-pos`. Talks to [`genz-rms-apis`](../genz-rms-apis).
 
 `admin` / `user` / `kitchen`. `homeRouteFor()` picks the landing route — dashboard / billing /
 `/orders` — and is what login and every gate redirect to.
-- **`kitchen` is the back-of-house terminal: the orders board and nothing else.** `RequireAuth` (in
-  the `(rms)` layout and on `/billing`) bounces it off any other path via `canOpen()`, the sidebar
-  shows only entries flagged `kitchen: true`, and `/orders` hides the front desk's **⏱ Time** button
-  for it. None of that is the real gate — `genz-rms-apis` `RestrictKitchenUser` 403s every endpoint
-  but the board's, so a typed URL gets an empty screen, not data. These checks only stop the UI
-  offering doors that would slam.
-- Adding a page a kitchen login should see means adding it to `KITCHEN_HOME`/`canOpen()` here **and**
-  to the middleware's allowlist in the backend.
+- **`kitchen` is the back-of-house terminal: the orders board, plus the complaints register to
+  read.** `KITCHEN_ROUTES` in `lib/auth.tsx` is the whole list (`/orders` + subpaths,
+  `/complaints`); `RequireAuth` (in the `(rms)` layout and on `/billing`) bounces it off anything
+  else via `canOpen()`, the sidebar shows only entries flagged `kitchen: true`, and `/orders` hides
+  the front desk's **⏱ Time** button for it. None of that is the real gate — `genz-rms-apis`
+  `RestrictKitchenUser` 403s every endpoint off its allowlist, so a typed URL gets an empty screen,
+  not data. These checks only stop the UI offering doors that would slam.
+- **Reachable ≠ actionable.** `/complaints` is on that list so the kitchen can look further back
+  than its own board's one-day tab, but every button on it (resolve, reopen, delete) is hidden for
+  a kitchen login and 403s server-side. A page can be readable to the kitchen while its actions are
+  not, and the two are gated separately.
+- Adding a page a kitchen login should see means adding it to `KITCHEN_ROUTES`/`canOpen()` here
+  **and** to the middleware's allowlist in the backend.
 
 ## Responsive: `md` is the line
 
@@ -114,8 +119,14 @@ at the end of the shift. Three screens, one feed:
     duplicate, one filed against the wrong bill — not for closing one off, which is **Mark
     resolved**. The button is hidden for non-admins, but the API is the actual gate (403); deleting
     the last complaint on an order closes the modal, since what's left is an ordinary bill.
-- A **kitchen login gets the tab and nothing else**: `/complaints` is not `kitchen: true` in the
-  sidebar and the API 403s it on the register, on logging and on resolving.
+- A **kitchen login gets the register too, read-only.** `/complaints` is `kitchen: true` in the
+  sidebar and on `KITCHEN_ROUTES`, because the board's ⚠ tab only covers today and looking back over
+  a run of the same complaint is a kitchen question. It can open a row and read the bill and the
+  thread; the modal renders **no action row at all** for it (`isKitchenUser`), so resolve, reopen
+  and delete are simply absent rather than present-and-failing. Logging a complaint is still the
+  counter's (the ⚠ button lives on `/sales`, which the kitchen can't open), and the API 403s the
+  kitchen on all four either way. Acknowledging stays on the board, where the kitchen actually works
+  — the register doesn't offer **OK — Seen** even though the API would allow it.
 
 ### The third alarm sound
 `lib/alertSound.ts` now arbitrates **three** sounds, still one at a time
@@ -166,6 +177,8 @@ loses nothing, and the ✕ is for getting one out of the way early rather than f
 honest.
 - Silent on `/orders`: the kitchen board already shows those slips, and the person who pressed
   "Ready" doesn't need telling. Leaving the page also clears any toast it raised.
+- Silent for a **kitchen login on any page**, for the same reason — since the kitchen can open
+  `/complaints`, the path check alone would let this alert fire at the terminal that raised it.
 - The first poll after a page load only records what is already ready, so a refresh doesn't spray
   toasts for the whole day's backlog.
 

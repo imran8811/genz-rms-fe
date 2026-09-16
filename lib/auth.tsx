@@ -5,10 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { api, TOKEN_KEY, USER_KEY } from "@/lib/api";
 
 /**
- * `kitchen` is the terminal in the back: it sees the orders board and nothing
- * else. The gate that matters is the backend's (RestrictKitchenUser 403s every
- * other endpoint); the checks here just keep the UI from offering doors that
- * would only slam.
+ * `kitchen` is the terminal in the back: it works from the orders board, and
+ * may additionally *read* the complaints register. The gate that matters is the
+ * backend's (RestrictKitchenUser 403s every other endpoint); the checks here
+ * just keep the UI from offering doors that would only slam.
  */
 export type UserRole = "admin" | "user" | "kitchen";
 
@@ -82,8 +82,18 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-/** The only route a kitchen login may open. */
+/** Where a kitchen login lands, and the only screen it can act on. */
 export const KITCHEN_HOME = "/orders";
+
+/**
+ * Every route a kitchen login may open. The board is its home; the complaints
+ * register is there to be **read** — the board's ⚠ tab only covers today, and
+ * "has this dish come back before?" is a kitchen question that needs looking
+ * further back than that. It cannot act on what it finds there: the API allows
+ * the kitchen the register and nothing else on it (see `RestrictKitchenUser`),
+ * so resolving, reopening and deleting are hidden for it in the UI.
+ */
+const KITCHEN_ROUTES = [KITCHEN_HOME, "/complaints"];
 
 /** Is this the back-of-house login, restricted to the orders board? */
 export function isKitchenUser(user: Pick<AuthUser, "role"> | null | undefined): boolean {
@@ -103,7 +113,7 @@ export function homeRouteFor(user: Pick<AuthUser, "role">): string {
 /** Whether `user` is allowed to open `pathname` at all. */
 export function canOpen(user: Pick<AuthUser, "role">, pathname: string): boolean {
   if (!isKitchenUser(user)) return true;
-  return pathname === KITCHEN_HOME || pathname.startsWith(`${KITCHEN_HOME}/`);
+  return KITCHEN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 }
 
 /** Full-screen placeholder shown while we resolve auth state or redirect. */
