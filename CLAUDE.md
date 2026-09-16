@@ -55,7 +55,8 @@ The RMS is a desktop/counter app first, so most screens are laid out for a wide 
 ## Kitchen orders board (`/orders`)
 
 Live slip board for the kitchen — a plain card grid, no modals. Polls `GET /orders/kitchen` every
-10s (plus on tab focus) and renders each order as a receipt-style slip (`components/OrderSlip`),
+10s (plus on tab focus; the same timer also pulls `GET /complaints/kitchen` for the **⚠ Complaints**
+tab — see "Complaints") and renders each order as a receipt-style slip (`components/OrderSlip`),
 **newest first**, so the order that just landed is at the top of the board. (The feed itself is
 oldest-first; the page sorts a copy for display.)
 - Orders with `kitchen_status === "new"` get a red pulsing frame and keep a repeating chime going
@@ -76,6 +77,50 @@ oldest-first; the page sorts a copy for display.)
   🔕 → 🔔 toggle as the fallback.
 - Local status changes are held in an `overrides` map so a poll in flight can't roll a slip back.
 
+## Complaints (counter logs one → kitchen is alarmed → counter closes it)
+
+A customer complaint is about **food this kitchen made**, so it is told at the moment one lands, not
+at the end of the shift. Three screens, one feed:
+- **Log it** — a ⚠ button on every row of `/sales` opens `components/ComplaintModal.tsx`: one
+  free-text box and Save. Not a category dropdown on purpose — this is typed with the customer on the
+  phone, and the kitchen needs the sentence, not the bucket. → `POST /orders/{id}/complaints`.
+  Sales rows carry `complaints_count`, so a bill that came back shows a red ⚠ with a count.
+- **Kitchen hears it** — `/orders` grows a **4th tab, ⚠ Complaints** (`components/ComplaintCard.tsx`),
+  polled from `GET /complaints/kitchen` on the **same 10s timer as the slips**. An unacknowledged
+  complaint rings a **third alarm sound** and the tab itself pulses.
+  - **One button: OK — Seen.** It means "we know" — it stops the alarm and leaves the complaint open.
+    The kitchen gets no "Resolved" button: whether the customer ends up satisfied is settled at the
+    counter, and the API 403s the kitchen on `resolve` anyway.
+  - The press is held over an in-flight poll (`complaintAcks`, the same idiom as the slips'
+    `overrides`), or an acknowledged complaint would snap back to unseen and re-alarm for a few
+    seconds. It expires, so a press that never landed surfaces rather than staying hidden.
+  - The terminal that **logged** it never alarms itself — `lib/localComplaints.ts`
+    (`rms_local_complaints`), same idea as `lib/localOrders.ts`.
+  - The feed keeps acknowledged rows: the tab is also the kitchen's record of what came back today.
+  - The complaints feed **fails quietly** — the board is what the kitchen cooks from, and blanking it
+    over a complaint that didn't load would be the worse failure.
+- **Close it** — `/complaints` (sidebar: Operations → Complaints) is the front desk's register:
+  every complained-about order over a **date range** (not a single day, unlike Sales — complaints are
+  rare enough that one day is usually an empty screen), filtered Open / Not seen / Resolved / All.
+  Clicking a row opens `components/ComplaintDetailModal.tsx` — the whole bill (items, charges,
+  totals, notes, kitchen timings) above the complaint thread, with **Mark resolved** (+ an optional
+  outcome note) and **Reopen**. The thread is fetched by `order_id` rather than filtered out of the
+  list: a second complaint on the same bill may be resolved or outside the range, and deciding about
+  one means seeing all of them. **Reopen returns a complaint to `seen`, never `new`** — the kitchen
+  has already been told.
+- A **kitchen login gets the tab and nothing else**: `/complaints` is not `kitchen: true` in the
+  sidebar and the API 403s it on the register, on logging and on resolving.
+
+### The third alarm sound
+`lib/alertSound.ts` now arbitrates **three** sounds, still one at a time
+(`new-order` > `web-order` > `complaint` > `time-question`): a landed order outranks a complaint
+because food not yet started is the only thing that gets worse by waiting, and a complaint outranks a
+time question because that customer is already unhappy rather than merely waiting.
+- The complaint alarm **descends** (392 → 311 → 233 Hz, each note doubled an octave below on a
+  sawtooth) where the new-order chime climbs and the klaxon alternates. Across a noisy kitchen the
+  *direction* of the pitch is what survives, so that — not timbre — is what tells them apart. It also
+  repeats more slowly (3.4s): a complaint has to be unmissable, not urgent.
+
 ## Preparation time (front desk ⇄ kitchen, on the same board)
 
 "How much longer?" at the counter, answered from the kitchen — both halves live on the `/orders`
@@ -91,7 +136,8 @@ slip, so there is no separate front-desk screen and no mode switch.
 - **Front desk** then sees `Kitchen said ~6 min at 14:32` with a live `≈ 3 min left` countdown
   (`etaRemaining()` counts down from `eta_set_at`, so the quote never goes stale).
 - Only **one alarm plays at a time**, arbitrated inside `lib/alertSound.ts`: callers *request* an
-  alarm and the module plays the highest-priority claim (`new-order` > `web-order` > `time-question`),
+  alarm and the module plays the highest-priority claim
+  (`new-order` > `web-order` > `complaint` > `time-question`),
   since two chimes over each other defeats the point of a second sound. The arbitration lives in the
   module because the claims no longer share a page — `WebOrderNotifier` is mounted in the shell. There is **no card shake and no device vibration**
   (both removed — the motion read as noise, and the buzz never carried); the alarm is the sound plus

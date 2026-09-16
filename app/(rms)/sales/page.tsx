@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useMenu } from "@/lib/menuStore";
 import ReceiptPreviewModal from "@/components/ReceiptPreviewModal";
+import ComplaintModal from "@/components/ComplaintModal";
 
 type Period       = "today" | "week" | "month";
 type OrderType    = "Dine-in" | "Takeaway" | "Delivery";
@@ -58,6 +59,8 @@ interface ApiOrder {
   notes: string | null;
   created_at: string;
   items: OrderItem[];
+  /** How many customer complaints this bill has collected (see /complaints). */
+  complaints_count?: number;
 }
 
 interface OrdersPage { data: ApiOrder[]; total: number; }
@@ -155,6 +158,8 @@ function orderToForm(o: ApiOrder): EditForm {
 export default function SalesPage() {
   const menu = useMenu();
   const [receiptOrder, setReceiptOrder] = useState<ApiOrder | null>(null);
+  /** The order a complaint is being logged against, if the ⚠ box is open. */
+  const [complaintOrder, setComplaintOrder] = useState<ApiOrder | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
@@ -522,6 +527,30 @@ export default function SalesPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                             </button>
+                            {/* Log a customer complaint against this bill.
+                                Tinted red once the order has one, so a row that
+                                came back is visible without opening anything —
+                                the register itself lives on /complaints. */}
+                            <button
+                              onClick={() => setComplaintOrder(order)}
+                              title={
+                                order.complaints_count
+                                  ? `Complaints: ${order.complaints_count} — log another`
+                                  : "Log a customer complaint"
+                              }
+                              className={`relative p-1 rounded-md transition-colors hover:bg-red-50 hover:text-brand-red ${
+                                order.complaints_count ? "text-brand-red" : "text-gray-400"
+                              }`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                              </svg>
+                              {!!order.complaints_count && (
+                                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-brand-red px-1 text-[9px] font-bold leading-none text-white">
+                                  {order.complaints_count}
+                                </span>
+                              )}
+                            </button>
                             {/* View */}
                             <button
                               onClick={() => openView(order)}
@@ -860,6 +889,26 @@ export default function SalesPage() {
 
           </div>
         </div>
+      )}
+
+      {/* ── Log a customer complaint ── */}
+      {complaintOrder && (
+        <ComplaintModal
+          order={complaintOrder}
+          onClose={() => setComplaintOrder(null)}
+          onLogged={(complaint) => {
+            // Bump the row's count rather than refetching the day: the list is
+            // right about everything else, and a reload here would throw away
+            // the filters the operator is working in.
+            setOrders((prev) =>
+              prev.map((o) =>
+                o.id === complaint.order_id
+                  ? { ...o, complaints_count: (o.complaints_count ?? 0) + 1 }
+                  : o,
+              ),
+            );
+          }}
+        />
       )}
 
       {/* ── Bill slip soft copy ── */}

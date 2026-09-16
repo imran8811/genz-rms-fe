@@ -79,6 +79,20 @@ const navGroups: {
         ),
       },
       {
+        // Deliberately NOT `kitchen: true`: the kitchen is *told* about
+        // complaints on its own board (the ⚠ Complaints tab) and can only
+        // acknowledge them. The register — and closing one off — is the front
+        // desk's, and the API 403s a kitchen login on this feed.
+        href: "/complaints",
+        label: "Complaints",
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 flex-shrink-0">
+            <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+            <path d="M12 8v4M12 15.5h.01"/>
+          </svg>
+        ),
+      },
+      {
         href: "/purchasing",
         label: "Purchasing",
         icon: (

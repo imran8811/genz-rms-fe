@@ -2,7 +2,7 @@
  * Repeating alert chimes for the kitchen orders board, synthesised with the Web
  * Audio API so there is no audio asset to ship (and nothing to 404 offline).
  *
- * Two sounds, deliberately unalike so the kitchen can tell them apart from
+ * Three sounds, deliberately unalike so the kitchen can tell them apart from
  * across the room without looking:
  *   - a rising three-note chime: an order has landed. Raised by two independent
  *     alarms — `new-order` (the kitchen board's own unacknowledged slips) and
@@ -10,6 +10,11 @@
  *     chime on purpose: to whoever hears it, "an order came in" is one event.
  *   - `time-question` — a two-tone klaxon: the front desk is asking how much
  *     longer an order will take.
+ *   - `complaint` — a low, descending buzz: a customer has complained about an
+ *     order. It falls where the other two climb or alternate, and sits an octave
+ *     below both, so nobody has to read the board to know which of the three it
+ *     is — which matters most for this one, because it is the sound that means
+ *     something has already gone wrong.
  *
  * Only ever **one alarm plays at a time** (`PRIORITY` / `sync`). Callers request
  * an alarm rather than starting it, because they no longer all live on one page:
@@ -29,14 +34,19 @@
 
 type WindowWithWebkitAudio = Window & { webkitAudioContext?: typeof AudioContext };
 
-type AlertKind = "new-order" | "web-order" | "time-question";
+type AlertKind = "new-order" | "web-order" | "complaint" | "time-question";
 
 /**
  * Loudest claim wins, and the rest stay silent until it is cleared. `new-order`
  * and `web-order` sound identical, so their order relative to each other is
- * inaudible — what matters is that a landed order outranks a time question.
+ * inaudible — what matters is that a landed order outranks the rest: food not
+ * yet started is the only thing here that gets worse by waiting.
+ *
+ * A complaint outranks a time question because it is about a customer who is
+ * already unhappy, where the question is about one who is merely waiting — and
+ * neither of them stops the kitchen cooking, so both yield to an order.
  */
-const PRIORITY: AlertKind[] = ["new-order", "web-order", "time-question"];
+const PRIORITY: AlertKind[] = ["new-order", "web-order", "complaint", "time-question"];
 
 type Voice = { osc: OscillatorNode; gain: GainNode };
 
@@ -49,6 +59,7 @@ const loops: Partial<Record<AlertKind, ReturnType<typeof setInterval>>> = {};
 const voices: Record<AlertKind, Voice[]> = {
   "new-order": [],
   "web-order": [],
+  complaint: [],
   "time-question": [],
 };
 /** Alarms callers currently want. What actually plays is decided by `sync()`. */
@@ -152,9 +163,34 @@ function timeQuestionChime() {
   blast(audio, t + 0.72, 587, 0.32);
 }
 
+/**
+ * A customer has complained — three falling notes, each doubled an octave down
+ * on a sawtooth so the sound is low and rough where the new-order chime is
+ * bright and the klaxon is piercing. It *descends*, which is the opposite shape
+ * to the chime: across a noisy kitchen the direction of the pitch is the part
+ * that survives, so it is what tells these two apart, not their timbre.
+ *
+ * Slower than the other two as well (a longer gap between repeats), because
+ * unlike a waiting order nothing about a complaint gets worse in the next ten
+ * seconds — it has to be unmissable, not urgent.
+ */
+function complaintChime() {
+  const audio = ensureContext();
+  if (!audio || audio.state !== "running") return;
+  const t = audio.currentTime + 0.01;
+  const fall = (at: number, freq: number, duration: number) => {
+    beep("complaint", audio, at, freq, duration, "sawtooth", 0.85);
+    beep("complaint", audio, at, freq / 2, duration, "sawtooth", 0.5);
+  };
+  fall(t, 392, 0.28);
+  fall(t + 0.32, 311, 0.28);
+  fall(t + 0.64, 233, 0.44);
+}
+
 const ALARMS: Record<AlertKind, { play: () => void; everyMs: number }> = {
   "new-order": { play: () => newOrderChime("new-order"), everyMs: 2600 },
   "web-order": { play: () => newOrderChime("web-order"), everyMs: 2600 },
+  complaint: { play: complaintChime, everyMs: 3400 },
   "time-question": { play: timeQuestionChime, everyMs: 2000 },
 };
 
@@ -247,6 +283,20 @@ export function startWebOrderSound() {
 
 export function stopWebOrderSound() {
   requestAlert("web-order", false);
+}
+
+/**
+ * A customer complaint the kitchen hasn't acknowledged. Keeps sounding until
+ * someone in the back presses OK on the board's Complaints tab — pressing OK is
+ * "we know", not "it's fixed", which is why the alarm is allowed to stop long
+ * before the complaint is closed.
+ */
+export function startComplaintSound() {
+  requestAlert("complaint", true);
+}
+
+export function stopComplaintSound() {
+  requestAlert("complaint", false);
 }
 
 /** Front desk is waiting on a preparation time for a slip on the board. */

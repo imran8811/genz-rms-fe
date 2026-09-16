@@ -114,6 +114,39 @@ export interface KitchenFeed {
   orders: KitchenOrder[];
 }
 
+/**
+ * A customer complaint against an order.
+ *
+ * `new` is the only state that alarms the kitchen board — it means nobody in
+ * the back has looked at it yet. The kitchen's OK moves it to `seen` (the alarm
+ * stops; the complaint is still open), and the front desk closes it as
+ * `resolved`. Acknowledging and resolving are different people's jobs: the
+ * kitchen can't decide a customer is satisfied.
+ */
+export type ComplaintStatus = "new" | "seen" | "resolved";
+
+export interface OrderComplaint {
+  id: number;
+  order_id: number;
+  body: string;
+  status: ComplaintStatus;
+  logged_by: number | null;
+  /** Snapshot of who took it, so it stays attributable after staff turnover. */
+  logged_by_name: string | null;
+  seen_at: string | null;
+  resolved_at: string | null;
+  resolution: string | null;
+  created_at: string;
+  /** The bill it is about — the API sends it with every complaint feed. */
+  order?: KitchenOrder;
+}
+
+export interface ComplaintFeed {
+  date: string;
+  server_time: string;
+  complaints: OrderComplaint[];
+}
+
 export interface CartState {
   lines: CartLine[];
   orderType: OrderType;

@@ -3,24 +3,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { isKitchenUser, useAuth } from "@/lib/auth";
-import type { KitchenFeed, KitchenOrder, KitchenStatus } from "@/lib/types";
+import type {
+  ComplaintFeed,
+  KitchenFeed,
+  KitchenOrder,
+  KitchenStatus,
+  OrderComplaint,
+} from "@/lib/types";
 import OrderSlip from "@/components/OrderSlip";
+import ComplaintCard from "@/components/ComplaintCard";
 import {
   alertSoundReady,
   startAlertSound,
+  startComplaintSound,
   startTimeQuestionSound,
   stopAlertSound,
+  stopComplaintSound,
   stopTimeQuestionSound,
   unlockAlertSound,
 } from "@/lib/alertSound";
 import { getLocalOrderIds } from "@/lib/localOrders";
+import { getLocalComplaintIds } from "@/lib/localComplaints";
 import { forgetEtaAsk, getEtaAskIds, pruneEtaAsks, rememberEtaAsk } from "@/lib/etaAsks";
 
 const POLL_MS = 10000;
 /** How long a locally-set status may mask polled data (covers one in-flight poll). */
 const OVERRIDE_GRACE_MS = 15000;
 
-type Filter = "active" | "ready" | "all";
+/**
+ * `complaints` is the fourth tab rather than a page of its own: a complaint is
+ * about food this board made, and the kitchen is already standing in front of
+ * this screen. Putting it anywhere else would mean a second screen to watch.
+ */
+type Filter = "active" | "ready" | "all" | "complaints";
 
 export default function OrdersPage() {
   // The kitchen login answers time questions; it never raises them (the front
@@ -29,10 +44,12 @@ export default function OrdersPage() {
   const kitchenOnly = isKitchenUser(user);
 
   const [orders, setOrders] = useState<KitchenOrder[]>([]);
+  const [complaints, setComplaints] = useState<OrderComplaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [complaintBusyId, setComplaintBusyId] = useState<number | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
   const [soundOn, setSoundOn] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -45,7 +62,10 @@ export default function OrdersPage() {
   const overrides = useRef(new Map<number, { status: KitchenStatus; until: number }>());
   /** Same, for time questions/answers written from this board. */
   const etaWrites = useRef(new Map<number, { order: KitchenOrder; until: number }>());
+  /** Complaints acknowledged here, held until the poll echoes it — id → expiry. */
+  const complaintAcks = useRef(new Map<number, number>());
   const polling = useRef(false);
+  const pollingComplaints = useRef(false);
 
   const applyOverride = useCallback((order: KitchenOrder): KitchenOrder => {
     const pending = overrides.current.get(order.id);
@@ -108,19 +128,63 @@ export default function OrdersPage() {
     }
   }, [applyOverride, applyEtaWrite]);
 
-  // Poll for new orders, and catch up immediately when the tab regains focus.
+  /**
+   * Hold a just-pressed OK over a poll that was already in flight — otherwise
+   * an acknowledged complaint would snap back to `new` for a few seconds and
+   * start the alarm again, which reads as the press not having worked.
+   */
+  const applyComplaintAck = useCallback((complaint: OrderComplaint): OrderComplaint => {
+    const until = complaintAcks.current.get(complaint.id);
+    if (!until) return complaint;
+    // Expire rather than mask forever: a press that never landed must surface
+    // as an unacknowledged complaint, not stay hidden behind a local guess.
+    if (complaint.status !== "new" || Date.now() > until) {
+      complaintAcks.current.delete(complaint.id);
+      return complaint;
+    }
+    return { ...complaint, status: "seen" };
+  }, []);
+
+  /**
+   * The complaints feed is loaded separately from the slips and **fails
+   * quietly**: the board is what the kitchen is cooking from, and blanking it
+   * (or covering it in a red banner) because a complaint didn't load would be a
+   * worse failure than a complaint arriving one tick late.
+   */
+  const loadComplaints = useCallback(async () => {
+    if (pollingComplaints.current) return;
+    pollingComplaints.current = true;
+    try {
+      const feed = await api.get<ComplaintFeed>("/complaints/kitchen");
+      setComplaints(feed.complaints.map(applyComplaintAck));
+    } catch {
+      // Next tick recovers.
+    } finally {
+      pollingComplaints.current = false;
+    }
+  }, [applyComplaintAck]);
+
+  // Poll for new orders and complaints on one timer, and catch both up
+  // immediately when the tab regains focus.
   useEffect(() => {
     load();
-    const timer = setInterval(load, POLL_MS);
+    loadComplaints();
+    const timer = setInterval(() => {
+      load();
+      loadComplaints();
+    }, POLL_MS);
     const onVisible = () => {
-      if (document.visibilityState === "visible") load();
+      if (document.visibilityState === "visible") {
+        load();
+        loadComplaints();
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load]);
+  }, [load, loadComplaints]);
 
   // The alarm belongs to whoever is actually watching the board — a backgrounded
   // tab (e.g. on the counter terminal that is busy taking the order) stays quiet
@@ -185,6 +249,22 @@ export default function OrdersPage() {
   }, [pendingNew]);
 
   /**
+   * Complaints nobody in the back has acknowledged — minus any logged from this
+   * browser, exactly as with the new-order chime: the person who typed it in on
+   * the Sales screen doesn't need telling about it.
+   */
+  const complaintsUnseen = useMemo(() => {
+    const mine = getLocalComplaintIds();
+    return complaints.filter((c) => c.status === "new" && !mine.has(c.id));
+  }, [complaints]);
+
+  /** Still open (acknowledged or not) — what the tab counts. */
+  const complaintsOpen = useMemo(
+    () => complaints.filter((c) => c.status !== "resolved"),
+    [complaints],
+  );
+
+  /**
    * Orders the front desk is waiting on a preparation time for — minus any this
    * browser asked about itself, exactly as with the new-order chime.
    */
@@ -203,6 +283,16 @@ export default function OrdersPage() {
     else stopAlertSound();
   }, [newOrderAlarm]);
 
+  // A complaint rings with its own (low, falling) sound, and keeps ringing until
+  // someone in the back presses OK on the Complaints tab. Which of the three
+  // alarms is actually audible is decided in `lib/alertSound.ts` — only one
+  // plays at a time, and a landed order outranks a complaint.
+  const complaintAlarm = soundOn && watching && complaintsUnseen.length > 0;
+  useEffect(() => {
+    if (complaintAlarm) startComplaintSound();
+    else stopComplaintSound();
+  }, [complaintAlarm]);
+
   // One alarm at a time: a fresh order outranks a time question, and two chimes
   // playing over each other would be impossible to tell apart — which is the
   // entire point of giving the time question its own sound.
@@ -216,6 +306,7 @@ export default function OrdersPage() {
     () => () => {
       stopAlertSound();
       stopTimeQuestionSound();
+      stopComplaintSound();
     },
     [],
   );
@@ -224,9 +315,10 @@ export default function OrdersPage() {
   useEffect(() => {
     const parts: string[] = [];
     if (alerting.length > 0) parts.push(`(${alerting.length}) New orders`);
+    if (complaintsUnseen.length > 0) parts.push(`⚠ ${complaintsUnseen.length} complaints`);
     if (timeAsked.length > 0) parts.push(`⏱ ${timeAsked.length} time asked`);
     document.title = parts.join(" · ") || "Orders";
-  }, [alerting.length, timeAsked.length]);
+  }, [alerting.length, complaintsUnseen.length, timeAsked.length]);
 
   async function setStatus(order: KitchenOrder, status: KitchenStatus) {
     setBusyId(order.id);
@@ -306,6 +398,34 @@ export default function OrdersPage() {
     }
   }
 
+  /**
+   * Kitchen presses OK on a complaint: "we have seen this". It stops the alarm
+   * and nothing else — the complaint stays open until the front desk closes it,
+   * because whether the customer is satisfied is not the kitchen's call.
+   */
+  async function markComplaintSeen(complaint: OrderComplaint) {
+    setComplaintBusyId(complaint.id);
+    // Optimistic, and held over an in-flight poll: the alarm has to stop on the
+    // press, not a round trip later.
+    complaintAcks.current.set(complaint.id, Date.now() + OVERRIDE_GRACE_MS);
+    setComplaints((prev) =>
+      prev.map((c) => (c.id === complaint.id ? { ...c, status: "seen" as const } : c)),
+    );
+    try {
+      const updated = await api.post<OrderComplaint>(`/complaints/${complaint.id}/seen`, {});
+      setComplaints((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setError("");
+    } catch (e) {
+      // Put it back — otherwise the kitchen is left believing the back office
+      // knows about a complaint that is still marked unseen everywhere else.
+      complaintAcks.current.delete(complaint.id);
+      setComplaints((prev) => prev.map((c) => (c.id === complaint.id ? complaint : c)));
+      setError((e as Error).message || "Could not acknowledge the complaint — try again.");
+    } finally {
+      setComplaintBusyId(null);
+    }
+  }
+
   const counts = useMemo(
     () => ({
       new: pendingNew.length,
@@ -317,6 +437,9 @@ export default function OrdersPage() {
   );
 
   const visible = useMemo(() => {
+    // The complaints tab renders its own list; this stays on the slips so the
+    // board doesn't recompute when a complaint lands.
+    if (filter === "complaints") return [];
     const list =
       filter === "all"
         ? orders
@@ -339,10 +462,18 @@ export default function OrdersPage() {
     });
   }, [orders, filter]);
 
-  const tabs: { key: Filter; label: string; count: number }[] = [
+  const tabs: { key: Filter; label: string; count: number; alert?: boolean }[] = [
     { key: "active", label: "Active", count: counts.new + counts.received },
     { key: "ready", label: "Ready", count: counts.ready },
     { key: "all", label: "All today", count: counts.all },
+    // Counts what is still open, but pulses on what is unacknowledged — the
+    // number is the workload, the pulse is the thing making a noise.
+    {
+      key: "complaints",
+      label: "⚠ Complaints",
+      count: complaintsOpen.length,
+      alert: complaintsUnseen.length > 0,
+    },
   ];
 
   return (
@@ -407,7 +538,9 @@ export default function OrdersPage() {
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 filter === tab.key
                   ? "bg-brand-red text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  : tab.alert
+                    ? "animate-pulse bg-red-100 text-brand-red hover:bg-red-200"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               {tab.label}
@@ -416,6 +549,11 @@ export default function OrdersPage() {
           ))}
 
           <span className="ml-auto flex items-center gap-3 text-xs font-medium">
+            {complaintsUnseen.length > 0 && (
+              <span className="flex items-center gap-1.5 rounded-md bg-red-100 px-2 py-1 font-semibold text-brand-red">
+                ⚠ Complaints {complaintsUnseen.length}
+              </span>
+            )}
             {timeAsked.length > 0 && (
               <span className="flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 font-semibold text-amber-800">
                 ⏱ Time asked {timeAsked.length}
@@ -440,7 +578,29 @@ export default function OrdersPage() {
 
       {/* Board */}
       <main className="flex-1 overflow-y-auto p-6">
-        {loading ? (
+        {filter === "complaints" ? (
+          complaints.length === 0 ? (
+            <div className="py-20 text-center">
+              <div className="text-4xl">🙂</div>
+              <p className="mt-3 font-medium text-gray-600">No complaints today.</p>
+              <p className="text-sm text-gray-400">
+                One logged at the counter appears here straight away, with its own alarm.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {complaints.map((complaint) => (
+                <ComplaintCard
+                  key={complaint.id}
+                  complaint={complaint}
+                  now={now}
+                  busy={complaintBusyId === complaint.id}
+                  onSeen={() => markComplaintSeen(complaint)}
+                />
+              ))}
+            </div>
+          )
+        ) : loading ? (
           <div className="py-20 text-center text-gray-400">Loading orders…</div>
         ) : visible.length === 0 ? (
           <div className="py-20 text-center">
