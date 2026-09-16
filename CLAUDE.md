@@ -162,6 +162,12 @@ it off `GET /orders/kitchen` and serves it on `GET /orders/web-inbox` instead (s
 happen in the seconds after a chime starts, which shapes both halves below: the alert only
 *announces*, and the counter board is where the order waits for as long as the call takes.
 
+> ⚠ **Currently switched off.** `COUNTER_MODULE_ENABLED` at the top of `components/WebOrderNotifier.tsx`
+> is `false` while the counter module is unused, so the shell no longer polls `/orders/counter` every
+> 10s on every screen (the only remaining background poll is the kitchen feed). Nothing else was
+> changed — flip the flag to `true` when the counter goes live and the alarm below works as written.
+> The `/counter` page still polls while it is open; only the always-on shell poll is disabled.
+
 `components/WebOrderNotifier.tsx` announces one — and only announces it. It polls `/orders/counter`
 every 10s, filters to what is still waiting, and raises **the same rising three-note chime the
 kitchen hears for a new order** plus an on-screen card. (It raised a desktop pop-up alongside the

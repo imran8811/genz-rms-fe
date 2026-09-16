@@ -35,6 +35,17 @@ import { dismissWebOrder, getDismissedWebOrders } from "@/lib/webOrderAcks";
  * because an unverified order is not on that board at all.
  */
 
+/**
+ * **Temporarily off.** The counter module isn't in use yet, so the 10s poll of
+ * `/orders/counter` this component runs on every RMS screen buys nothing — it is
+ * six background requests a minute from every open terminal for a board nobody
+ * works. Flip this back to `true` when the counter goes live; nothing else has
+ * to change (the component is otherwise untouched and keeps working as
+ * documented). While it is `false` the poll never starts, the chime is never
+ * unlocked and the card never renders.
+ */
+const COUNTER_MODULE_ENABLED: boolean = false;
+
 const POLL_MS = 10000;
 /**
  * How recent an unhandled online order has to be to still be worth ringing
@@ -52,7 +63,7 @@ export default function WebOrderNotifier() {
   // A kitchen login is by definition not the counter, and the API 403s it on
   // this feed anyway — polling would only produce errors in the back.
   const { user } = useAuth();
-  const enabled = !isKitchenUser(user);
+  const enabled = COUNTER_MODULE_ENABLED && !isKitchenUser(user);
 
   const [orders, setOrders] = useState<KitchenOrder[]>([]);
   const [dismissed, setDismissed] = useState<Set<number>>(() => new Set());
@@ -95,9 +106,10 @@ export default function WebOrderNotifier() {
 
   // Drives the "6 min ago" labels and ages orders out of the alarm window.
   useEffect(() => {
+    if (!enabled) return;
     const timer = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(timer);
-  }, []);
+  }, [enabled]);
 
   // Browsers block audio until the page has been interacted with, so unlock on
   // the first gesture anywhere — the same handshake the orders board uses.
