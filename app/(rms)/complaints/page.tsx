@@ -148,6 +148,20 @@ export default function ComplaintsPage() {
     });
   };
 
+  /**
+   * An admin deleted a complaint (hard — the row is gone server-side). Drop it
+   * from both lists, and close the modal once the order has no complaints left
+   * to read: what is left of it is an ordinary bill, which belongs on Sales.
+   */
+  const dropComplaint = (id: number) => {
+    setComplaints((prev) => prev.filter((c) => c.id !== id));
+    setOpenThread((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      if (next.length === 0) setOpenOrder(null);
+      return next;
+    });
+  };
+
   const displayed = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return complaints;
@@ -365,6 +379,7 @@ export default function ComplaintsPage() {
             setOpenThread([]);
           }}
           onChanged={syncComplaint}
+          onDeleted={dropComplaint}
         />
       )}
     </div>

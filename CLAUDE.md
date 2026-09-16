@@ -108,6 +108,12 @@ at the end of the shift. Three screens, one feed:
   list: a second complaint on the same bill may be resolved or outside the range, and deciding about
   one means seeing all of them. **Reopen returns a complaint to `seen`, never `new`** — the kitchen
   has already been told.
+  - **Delete is admin-only, and permanent.** An `admin` gets a quiet **Delete** on each complaint in
+    the modal, behind a `confirm()` → `DELETE /complaints/{id}`, which really removes the row (no
+    soft delete behind it). It is for a complaint that shouldn't have been logged — a test row, a
+    duplicate, one filed against the wrong bill — not for closing one off, which is **Mark
+    resolved**. The button is hidden for non-admins, but the API is the actual gate (403); deleting
+    the last complaint on an order closes the modal, since what's left is an ordinary bill.
 - A **kitchen login gets the tab and nothing else**: `/complaints` is not `kitchen: true` in the
   sidebar and the API 403s it on the register, on logging and on resolving.
 

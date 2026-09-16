@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { formatPKR } from "@/lib/currency";
 import type { KitchenOrder, OrderComplaint } from "@/lib/types";
 
@@ -61,9 +62,21 @@ interface Props {
   onClose: () => void;
   /** A complaint that just changed state, so the page can update its row. */
   onChanged: (complaint: OrderComplaint) => void;
+  /** A complaint that no longer exists, so the page can drop its row. */
+  onDeleted: (id: number) => void;
 }
 
-export default function ComplaintDetailModal({ order, complaints, onClose, onChanged }: Props) {
+export default function ComplaintDetailModal({
+  order,
+  complaints,
+  onClose,
+  onChanged,
+  onDeleted,
+}: Props) {
+  const { user } = useAuth();
+  // Delete is admin-only. The API is the actual gate (403); this only keeps the
+  // counter from being offered a button that would slam.
+  const isAdmin = user?.role === "admin";
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
   /** Which complaint is having a closing note written, and what it says. */
@@ -86,6 +99,26 @@ export default function ComplaintDetailModal({ order, complaints, onClose, onCha
       setClosing(null);
     } catch (e) {
       setError((e as Error).message || "Could not update the complaint — try again.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /**
+   * Admin wipes a complaint that should never have been logged — a test row, a
+   * duplicate, one filed against the wrong bill. There is no undo and no
+   * soft-delete column behind it, hence the confirm.
+   */
+  async function remove(complaint: OrderComplaint) {
+    if (!confirm("Delete this complaint permanently? This cannot be undone.")) return;
+    setBusyId(complaint.id);
+    setError("");
+    try {
+      await api.delete<null>(`/complaints/${complaint.id}`);
+      onDeleted(complaint.id);
+      setClosing(null);
+    } catch (e) {
+      setError((e as Error).message || "Could not delete the complaint — try again.");
     } finally {
       setBusyId(null);
     }
@@ -226,21 +259,39 @@ export default function ComplaintDetailModal({ order, complaints, onClose, onCha
                             </button>
                           </div>
                         </div>
-                      ) : resolved ? (
-                        <button
-                          onClick={() => act(complaint, "reopen")}
-                          disabled={busyId === complaint.id}
-                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 disabled:opacity-50"
-                        >
-                          {busyId === complaint.id ? "…" : "Reopen"}
-                        </button>
                       ) : (
-                        <button
-                          onClick={() => setClosing({ id: complaint.id, note: "" })}
-                          className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
-                        >
-                          Mark resolved
-                        </button>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          {resolved ? (
+                            <button
+                              onClick={() => act(complaint, "reopen")}
+                              disabled={busyId === complaint.id}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 disabled:opacity-50"
+                            >
+                              {busyId === complaint.id ? "…" : "Reopen"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setClosing({ id: complaint.id, note: "" })}
+                              className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-colors hover:bg-emerald-100"
+                            >
+                              Mark resolved
+                            </button>
+                          )}
+
+                          {/* Sits apart from the workflow buttons, and is quiet
+                              until hovered: closing a complaint is the normal
+                              ending, deleting one is admitting it shouldn't
+                              have been logged. */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => remove(complaint)}
+                              disabled={busyId === complaint.id}
+                              className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              {busyId === complaint.id ? "…" : "Delete"}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
