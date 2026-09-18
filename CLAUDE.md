@@ -154,7 +154,8 @@ slip, so there is no separate front-desk screen and no mode switch.
   (`etaRemaining()` counts down from `eta_set_at`, so the quote never goes stale).
 - Only **one alarm plays at a time**, arbitrated inside `lib/alertSound.ts`: callers *request* an
   alarm and the module plays the highest-priority claim
-  (`new-order` > `web-order` > `complaint` > `time-question`),
+  (`new-order` > `web-order` > `complaint` > `time-question`; the front desk's one-shot ready ping
+  is not a claim and takes no part — see "The ready ping"),
   since two chimes over each other defeats the point of a second sound. The arbitration lives in the
   module because the claims no longer share a page — `WebOrderNotifier` is mounted in the shell. There is **no card shake and no device vibration**
   (both removed — the motion read as noise, and the buzz never carried); the alarm is the sound plus
@@ -167,20 +168,46 @@ slip, so there is no separate front-desk screen and no mode switch.
   already in flight can't make the board forget the ask was its own), so the *next* question, from
   whichever terminal, alarms this one again.
 
-## Ready alert (kitchen → front desk) — an in-page toast
+## Ready alert (kitchen → front desk) — a toast **and** a beep
 
 `components/ReadyOrderNotifier.tsx` polls the kitchen feed every 10s and raises a **green toast**
 ("#3021 · Ready to collect") in the top-right of whatever screen the front desk has open, the first
-time an order shows up as `ready`. It carries a **✕** in its own top-right corner and clears itself
-after `TOAST_MS` (30s) regardless — the ready state lives on the kitchen board, so a missed toast
-loses nothing, and the ✕ is for getting one out of the way early rather than for keeping the screen
-honest.
+time an order shows up as `ready`, **plus a short two-note beep** (`playReadyPing()` in
+`lib/alertSound.ts`). The toast stays up until its **✕** is pressed — clearing it is the
+acknowledgement.
+- **The beep is the half that works when nobody is looking.** The counter is usually facing a
+  customer, not the screen, and a silent toast was being missed until somebody happened to glance
+  over. The toast is the half that survives being missed, which is why it no longer times out.
+- It plays **once per poll**, not once per order and not on a loop: two orders coming off the pass
+  in the same 10s window is one trip to the hatch, and nothing is waiting on the counter pressing
+  anything, so a repeating alarm would only teach the staff to mute the terminal. It is a
+  *notification*, unlike the three kitchen alarms.
+- It **yields to any alarm that is sounding** rather than layering over it (see "The ready ping"
+  below) — a running alarm is already calling somebody to a screen, and the toast is still there.
+- Audio needs a gesture, so the component runs the **same unlock handshake** as the board and
+  `WebOrderNotifier` (first `pointerdown`/`keydown` anywhere). Until that lands, the stack shows one
+  amber *"Ready beep is blocked — tap to turn it on"* row above the toasts; tapping it unlocks and
+  plays the ping, so the staff hear what they are listening for.
 - Silent on `/orders`: the kitchen board already shows those slips, and the person who pressed
   "Ready" doesn't need telling. Leaving the page also clears any toast it raised.
 - Silent for a **kitchen login on any page**, for the same reason — since the kitchen can open
   `/complaints`, the path check alone would let this alert fire at the terminal that raised it.
 - The first poll after a page load only records what is already ready, so a refresh doesn't spray
-  toasts for the whole day's backlog.
+  toasts (or beeps) for the whole day's backlog.
+
+### The ready ping (a notification, not a fourth alarm)
+
+`lib/alertSound.ts` gained a `ready` sound, and it is the odd one out: two **falling** bell notes
+(triangle waves, G6 → C6, doubled an octave below), played twice over so one hiss of the fryer
+can't swallow the whole thing, and then finished — no loop, no claim, no entry in `PRIORITY`.
+- It falls on a triangle where the board's new-order chime **climbs on a square**, because one
+  terminal can hear both: the counter that beeps for a ready order is also the one that would chime
+  for an online order.
+- `playReadyPing()` drops the ping outright if **any** alarm is currently requested, so the
+  one-at-a-time rule still holds for everything that repeats. Nothing is lost by dropping it — the
+  toast stays on screen until it is dismissed.
+- It still needs its own `kind` (`PingKind` / `Voiced`) so its notes are filed separately; a
+  `stopAlert()` for someone else's alarm must not fade them out mid-ping.
 
 ### There are no desktop notifications anywhere in the RMS — don't add them back
 

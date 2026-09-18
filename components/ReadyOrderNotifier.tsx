@@ -6,13 +6,23 @@ import { api } from "@/lib/api";
 import { isKitchenUser, useAuth } from "@/lib/auth";
 import type { KitchenFeed, KitchenOrder } from "@/lib/types";
 import { clockTime } from "@/components/OrderSlip";
+import { alertSoundReady, playReadyPing, unlockAlertSound } from "@/lib/alertSound";
 
 /**
  * The kitchen's alert back to the front desk: raises a **toast** in the corner of
  * whatever RMS screen is open when an order is marked ready, so the counter knows
- * to collect it without watching the board.
+ * to collect it without watching the board — and **pings** once as it does.
  *
- * The toast is the whole alert — there is no OS notification behind it. This was
+ * The two halves cover each other. The front desk is usually looking at a
+ * customer rather than at a screen, so a silent toast was being missed until
+ * somebody happened to glance over; the ping is the half that works when nobody
+ * is watching. It plays once and is gone, so the toast is still the half that
+ * survives being missed — it stays up until it is dismissed.
+ *
+ * The toast is the whole *visible* alert — there is no OS notification behind
+ * it, and the ping is not one either: it is synthesised in `lib/alertSound.ts`
+ * and comes out of the page, so nothing about it can be silenced, throttled or
+ * refused by the OS while the tab is open. This was
  * a desktop notification until the counter laptop became a tablet, at which point
  * it stopped working entirely and silently: `new Notification(...)` throws on
  * Android Chrome, the throw was caught, and nobody was told anything. A pop-up
@@ -53,6 +63,8 @@ export default function ReadyOrderNotifier() {
   const enabled = !pathname.startsWith("/orders") && !isKitchenUser(user);
 
   const [toasts, setToasts] = useState<ReadyToast[]>([]);
+  /** Whether the browser has let the audio context start — see the unlock below. */
+  const [soundOn, setSoundOn] = useState(false);
 
   /** Orders already announced, so a poll every 10s doesn't re-announce them. */
   const announced = useRef(new Set<number>());
@@ -87,11 +99,21 @@ export default function ReadyOrderNotifier() {
       const feed = await api.get<KitchenFeed>("/orders/kitchen");
       const ready = feed.orders.filter((o) => o.kitchen_status === "ready");
 
+      let raised = 0;
       for (const order of ready) {
         if (announced.current.has(order.id)) continue;
-        if (primed.current) raise(order);
+        if (primed.current) {
+          raise(order);
+          raised += 1;
+        }
         announced.current.add(order.id);
       }
+
+      // One ping for the poll rather than one per order: two things coming off
+      // the pass inside the same 10s window is still one trip to the hatch, and
+      // the toasts say how many. The priming poll raises nothing, so a page
+      // reload is silent as well as toast-free.
+      if (raised > 0) playReadyPing();
 
       // Anything no longer ready (day rolled over, kitchen stepped it back) can
       // be forgotten, so it alerts again if it comes off the pass a second time.
@@ -107,6 +129,34 @@ export default function ReadyOrderNotifier() {
       polling.current = false;
     }
   }, [raise]);
+
+  /**
+   * Browsers refuse to start an audio context until the page has been
+   * interacted with, so try immediately (it works on a soft navigation, where
+   * the gesture already happened) and otherwise wait for the first click or
+   * keypress anywhere — the same handshake the orders board and
+   * `WebOrderNotifier` use. At a till that first gesture arrives within
+   * seconds; the amber "beep is blocked" row below covers the case where the
+   * screen has been sitting untouched since it was opened.
+   */
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    unlockAlertSound().then((ok) => {
+      if (!cancelled) setSoundOn(ok);
+    });
+    const onGesture = () => {
+      if (alertSoundReady()) return;
+      unlockAlertSound().then((ok) => setSoundOn(ok));
+    };
+    window.addEventListener("pointerdown", onGesture);
+    window.addEventListener("keydown", onGesture);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+    };
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -133,6 +183,25 @@ export default function ReadyOrderNotifier() {
 
   return (
     <div role="status" aria-live="polite" className="pointer-events-auto flex flex-col gap-2">
+      {/* The beep is the part of this alert that reaches someone serving a
+          customer, so a browser still blocking audio is worth one line — once
+          for the stack, not once per toast. Tapping it both unlocks the context
+          and plays the ping, so the staff hear what they are listening for. */}
+      {!soundOn && (
+        <button
+          type="button"
+          onClick={() =>
+            unlockAlertSound().then((ok) => {
+              setSoundOn(ok);
+              if (ok) playReadyPing();
+            })
+          }
+          className="rounded-lg bg-brand-yellow px-3 py-2 text-left text-xs font-semibold text-brand-ink shadow-soft transition-[filter] hover:brightness-95"
+        >
+          🔕 Ready beep is blocked by the browser — tap to turn it on
+        </button>
+      )}
+
       {toasts.map((toast) => (
         <div
           key={toast.id}

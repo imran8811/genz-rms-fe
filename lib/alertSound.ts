@@ -1,9 +1,10 @@
 /**
- * Repeating alert chimes for the kitchen orders board, synthesised with the Web
- * Audio API so there is no audio asset to ship (and nothing to 404 offline).
+ * Alert sounds for the kitchen orders board and the front desk, synthesised
+ * with the Web Audio API so there is no audio asset to ship (and nothing to
+ * 404 offline).
  *
- * Three sounds, deliberately unalike so the kitchen can tell them apart from
- * across the room without looking:
+ * Three repeating alarms, deliberately unalike so the kitchen can tell them
+ * apart from across the room without looking:
  *   - a rising three-note chime: an order has landed. Raised by two independent
  *     alarms — `new-order` (the kitchen board's own unacknowledged slips) and
  *     `web-order` (an online order the counter hasn't picked up). They share the
@@ -16,25 +17,43 @@
  *     is — which matters most for this one, because it is the sound that means
  *     something has already gone wrong.
  *
+ * …and one **one-shot ping**, `ready`: two falling bell notes for the front
+ * desk when the kitchen marks an order collected-ready. It is the odd one out
+ * on purpose — it is a notification, nobody is expected to acknowledge it, and
+ * it plays once. It therefore takes no part in the arbitration below; it just
+ * yields to any alarm that happens to be sounding rather than layering over it.
+ *
  * Only ever **one alarm plays at a time** (`PRIORITY` / `sync`). Callers request
  * an alarm rather than starting it, because they no longer all live on one page:
  * the board decides about its own slips while `WebOrderNotifier` follows the
  * operator around the RMS, and neither can see what the other wants. Two chimes
  * layered over each other would defeat the point of giving them separate sounds.
  *
- * Both are meant to carry over a working kitchen, so everything runs through a
- * compressor with makeup gain (see `ensureContext`) rather than a bare gain
- * node — that keeps the average level high, which is what "loud" actually means
- * across a noisy room, without the clipping a raw high gain would produce.
+ * All of them are meant to carry over a working kitchen, so everything runs
+ * through a compressor with makeup gain (see `ensureContext`) rather than a
+ * bare gain node — that keeps the average level high, which is what "loud"
+ * actually means across a noisy room, without the clipping a raw high gain
+ * would produce.
  *
  * Browsers block audio until the page has had a user gesture, so callers must
- * run `unlockAlertSound()` from a click/keypress before either alarm will
- * actually be audible.
+ * run `unlockAlertSound()` from a click/keypress before any of this is
+ * actually audible.
  */
 
 type WindowWithWebkitAudio = Window & { webkitAudioContext?: typeof AudioContext };
 
 type AlertKind = "new-order" | "web-order" | "complaint" | "time-question";
+
+/**
+ * A one-shot notification, not an alarm: it plays once and is over, so it has
+ * no loop, no claim and no place in `PRIORITY`. It still needs to be a `kind`
+ * because `beep()` files every note it schedules under one, and a ping's notes
+ * must not be swept away by a `stopAlert()` for somebody else's alarm.
+ */
+type PingKind = "ready";
+
+/** Anything that can schedule notes — an alarm or a one-shot ping. */
+type Voiced = AlertKind | PingKind;
 
 /**
  * Loudest claim wins, and the rest stay silent until it is cleared. `new-order`
@@ -56,11 +75,12 @@ let bus: GainNode | null = null;
 const loops: Partial<Record<AlertKind, ReturnType<typeof setInterval>>> = {};
 /** Notes already scheduled, per alarm, so stopping one can silence it mid-chime
  *  without cutting the other one short. */
-const voices: Record<AlertKind, Voice[]> = {
+const voices: Record<Voiced, Voice[]> = {
   "new-order": [],
   "web-order": [],
   complaint: [],
   "time-question": [],
+  ready: [],
 };
 /** Alarms callers currently want. What actually plays is decided by `sync()`. */
 const requested = new Set<AlertKind>();
@@ -93,7 +113,7 @@ function ensureContext(): AudioContext | null {
 }
 
 function beep(
-  kind: AlertKind,
+  kind: Voiced,
   audio: AudioContext,
   at: number,
   freq: number,
@@ -185,6 +205,34 @@ function complaintChime() {
   fall(t, 392, 0.28);
   fall(t + 0.32, 311, 0.28);
   fall(t + 0.64, 233, 0.44);
+}
+
+/**
+ * An order is ready to collect — the kitchen's answer back to the front desk.
+ *
+ * Unlike everything above it this is a **notification, not an alarm**: two
+ * quick bell-like notes, played once (twice over, so one hiss of the fryer
+ * can't swallow the whole thing) and done. Nothing is waiting on the counter
+ * pressing anything — the toast stays on screen until it is dismissed, and the
+ * order keeps sitting on the pass either way — so a sound that kept repeating
+ * would only teach the staff to mute the terminal.
+ *
+ * Triangle waves an octave apart, falling rather than rising: the board's
+ * new-order chime climbs on a square wave, and these two can be heard by the
+ * same terminal. Direction plus timbre is what tells them apart across a room.
+ */
+function readyChime() {
+  const audio = ensureContext();
+  if (!audio || audio.state !== "running") return;
+  const t = audio.currentTime + 0.01;
+  const ding = (at: number, freq: number) => {
+    beep("ready", audio, at, freq, 0.13, "triangle", 0.8);
+    beep("ready", audio, at, freq / 2, 0.13, "triangle", 0.4);
+  };
+  ding(t, 1568);
+  ding(t + 0.15, 1047);
+  ding(t + 0.5, 1568);
+  ding(t + 0.65, 1047);
 }
 
 const ALARMS: Record<AlertKind, { play: () => void; everyMs: number }> = {
@@ -306,4 +354,22 @@ export function startTimeQuestionSound() {
 
 export function stopTimeQuestionSound() {
   requestAlert("time-question", false);
+}
+
+/**
+ * An order has been marked ready — ping the front desk once.
+ *
+ * This is the one sound here that is **not** a claim: it fires and finishes, so
+ * it never enters the one-at-a-time arbitration above and nothing has to stop
+ * it. What it does respect is the other half of that rule — if any alarm is
+ * currently sounding, the ping is dropped rather than layered over it. An alarm
+ * is already calling someone to a screen, and the toast this ping belongs to
+ * stays up until it is dismissed, so the alert survives the silence.
+ *
+ * Needs `unlockAlertSound()` to have run from a gesture, like the alarms; until
+ * then this is a no-op and the toast is the whole alert, as it was before.
+ */
+export function playReadyPing() {
+  if (requested.size > 0) return;
+  readyChime();
 }
