@@ -123,6 +123,7 @@ export default function InventoryPage() {
   const [itemSaving, setItemSaving] = useState(false);
 
   const [settingUp, setSettingUp]   = useState(false);
+  const [syncing, setSyncing]       = useState(false);
   const [setupResult, setSetupResult] = useState<SetupBalance[] | null>(null);
 
   const [historyFor, setHistoryFor]   = useState<InventoryItem | null>(null);
@@ -235,10 +236,17 @@ export default function InventoryPage() {
    * One-click setup for cold drinks: pairs each flavour+size with its ingredient
    * and derives the balances. The host runs no shell commands, so this is how
    * stock gets switched on at all.
+   *
+   * The menu is refreshed from Gen Z Admin first, and that is not a nicety. A
+   * drink added in the admin sells fine on the till — the POS reads the live
+   * admin feed — but the RMS keys stock to its own menu mirror, so until that
+   * mirror catches up the new drink gets no shelf and its sales come off
+   * nothing, silently. Dew was exactly that.
    */
   const handleSetupDrinks = async () => {
     setSettingUp(true);
     try {
+      await api.post("/menu/sync", {});
       const res = await api.post<{ balances: SetupBalance[]; replayed: { deliveries: number; bills: number } }>(
         "/inventory/setup-category", { category: "cold-drinks", deal_default: "drink-next-cola" },
       );
@@ -248,6 +256,21 @@ export default function InventoryPage() {
       alert((e as Error).message);
     } finally {
       setSettingUp(false);
+    }
+  };
+
+  /** Pull the menu from Gen Z Admin, then re-derive — new drinks become sellable-from-stock. */
+  const handleSyncMenu = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post<{ categories: number; items: number }>("/menu/sync", {});
+      await api.post("/inventory/rebuild", {});
+      fetchItems();
+      alert(`Menu synced from Gen Z Admin: ${res.categories} categories, ${res.items} items.`);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -281,6 +304,18 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Drinks added in Gen Z Admin sell on the till immediately but are
+              invisible to stock until the RMS mirror catches up. */}
+          {isAdmin && (
+            <button
+              onClick={handleSyncMenu}
+              disabled={syncing}
+              title="Pull the latest menu from Gen Z Admin, then re-derive stock"
+              className="flex items-center gap-2 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:border-gray-400 hover:text-gray-800 transition-colors disabled:opacity-50"
+            >
+              {syncing ? "Syncing…" : "⇵ Sync menu"}
+            </button>
+          )}
           <button
             onClick={handleRebuild}
             disabled={rebuilding}
