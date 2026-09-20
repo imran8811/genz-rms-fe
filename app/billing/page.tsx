@@ -102,6 +102,11 @@ function BillingContent() {
         status: "completed",
         notes: notes.trim() || null,
         items: cart.lines.map((l) => ({
+          // The till reads the menu from the genz-admin feed, so a slug is the
+          // only identity it holds; the backend resolves it against its own
+          // mirror. Without it a bill line is just a name, and stock control has
+          // nothing dependable to deduct a sold drink from.
+          menu_item_slug: l.itemId,
           item_name: l.name,
           size: l.size ?? null,
           unit_price: l.unitPrice,

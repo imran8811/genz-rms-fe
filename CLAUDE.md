@@ -382,6 +382,34 @@ register plus manual CRUD (add / edit / delete any fine — breakage, uniform, w
   can see the rule didn't fire.
 - Payroll carries a **−Fines** column; final salary subtracts it alongside food and advances.
 
+## Inventory (`/inventory`) — stock for the things you resell
+
+The page used to list all ~90 catalogue rows with a balance of `0` and a red **Out** badge, because
+nothing in the backend ever moved `current_stock` (see `genz-rms-apis` → "Stock"). It now shows
+what stock control actually covers, and says so when it covers nothing.
+
+- **Tracked items only, by default.** Raw ingredients are consumed through recipes in grams and
+  nobody counts them off a shelf; they render as **Untracked** with `—` for stock, min and value,
+  and are hidden behind *"Show recipe ingredients"*. The summary cards and Stock Value count
+  tracked items only — otherwise the handful that matter drown in the ninety that don't.
+- **Empty state teaches the feature**: with nothing tracked yet the page explains what belongs
+  under stock control rather than rendering a table of zeroes.
+- **Edit** opens tracking: a *Track stock* switch, then **Sold as** (menu item) + **Size**, plus
+  *default drink for deals of this size*. Sizes come from the selected item's `prices` keys via
+  `/costing/menu-options`. The copy states the two things that are surprising — names are never
+  matched (`coke 345ml` will not find `Coca Cola / 350ml`), and each size is its own shelf.
+- **Stock Adjustment** relabels the types to what they mean at the counter, and says under the
+  dropdown whether the number *moves* the balance or *replaces* it — a stocktake entered as a
+  delta would put a shelf out by the whole count. Adjusting an untracked item 422s.
+- **History** shows the movements behind a balance (delivery / sold / stocktake, with the running
+  figure), which is the only way to argue with a number the shelf disagrees with.
+- **↻ Recalculate** (`POST /inventory/rebuild`) re-derives everything from the purchases and bills
+  on file. Not a repair button: stock is a replay, so it lands on the same answer unless the trade
+  itself changed.
+- **`/billing` now sends `menu_item_slug` per line.** The till reads the menu from the genz-admin
+  feed and holds no RMS ids, so bills carried no menu link at all and a sold drink had nothing
+  dependable to deduct from. Removing it silently breaks stock without breaking billing.
+
 ## Common commands
 
 ```bash
