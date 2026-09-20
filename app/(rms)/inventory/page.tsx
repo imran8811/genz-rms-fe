@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { MenuOption } from "@/lib/costing";
 
 type StockStatus = "OK" | "Low" | "Critical" | "Out" | "Untracked";
@@ -90,7 +91,19 @@ function LoadingRow({ cols }: { cols: number }) {
   );
 }
 
+interface SetupBalance {
+  sold_as: string;
+  ingredient: string;
+  bought: number;
+  sold: number;
+  on_hand: number;
+  status: StockStatus;
+}
+
 export default function InventoryPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const [items, setItems]         = useState<InventoryItem[]>([]);
   const [menuOptions, setMenuOptions] = useState<MenuOption[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -108,6 +121,9 @@ export default function InventoryPage() {
   const [showItem, setShowItem]   = useState(false);
   const [itemForm, setItemForm]   = useState<ItemForm>(emptyItem);
   const [itemSaving, setItemSaving] = useState(false);
+
+  const [settingUp, setSettingUp]   = useState(false);
+  const [setupResult, setSetupResult] = useState<SetupBalance[] | null>(null);
 
   const [historyFor, setHistoryFor]   = useState<InventoryItem | null>(null);
   const [movements, setMovements]     = useState<Movement[]>([]);
@@ -215,6 +231,26 @@ export default function InventoryPage() {
     }
   };
 
+  /**
+   * One-click setup for cold drinks: pairs each flavour+size with its ingredient
+   * and derives the balances. The host runs no shell commands, so this is how
+   * stock gets switched on at all.
+   */
+  const handleSetupDrinks = async () => {
+    setSettingUp(true);
+    try {
+      const res = await api.post<{ balances: SetupBalance[]; replayed: { deliveries: number; bills: number } }>(
+        "/inventory/setup-category", { category: "cold-drinks", deal_default: "drink-next-cola" },
+      );
+      setSetupResult(res.balances);
+      fetchItems();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSettingUp(false);
+    }
+  };
+
   const handleRebuild = async () => {
     setRebuilding(true);
     try {
@@ -282,10 +318,59 @@ export default function InventoryPage() {
             <p className="text-sm font-medium text-blue-900 mb-1">Nothing is under stock control yet.</p>
             <p className="text-sm text-blue-800">
               Stock is kept for the things you buy and sell whole — cold drinks, water,
-              anything that arrives in a bottle and leaves in one. Open an item below,
-              switch <strong>Track stock</strong> on and link it to the menu item and size
-              it sells as. Ingredients used in recipes stay out of this.
+              anything that arrives in a bottle and leaves in one. Ingredients used in
+              recipes stay out of this.
             </p>
+            {isAdmin && (
+              <>
+                {/* Cold drinks are 14 flavour+size shelves; pairing each with the
+                    right ingredient by hand is 14 chances to mispair one. */}
+                <button
+                  onClick={handleSetupDrinks}
+                  disabled={settingUp}
+                  className="mt-3 bg-brand-red text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-red-dark disabled:opacity-50"
+                >
+                  {settingUp ? "Setting up…" : "Set up cold drinks"}
+                </button>
+                <p className="mt-2 text-xs text-blue-700">
+                  Links every cold drink to its menu item and size, then works out each
+                  balance from the purchases and bills already on file.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* What the setup just derived, bought and sold shown beside the balance
+            so the figure can be checked rather than taken on trust. */}
+        {setupResult && (
+          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3">
+              <p className="text-sm font-medium text-green-900">
+                Cold drinks are now under stock control.
+              </p>
+              <button onClick={() => setSetupResult(null)} className="text-green-700 hover:text-green-900 text-sm">✕</button>
+            </div>
+            <table className="w-full text-sm bg-white">
+              <thead>
+                <tr className="bg-gray-50 border-y border-gray-100">
+                  <th className="text-left px-5 py-2 font-medium text-gray-500">Sold as</th>
+                  <th className="text-right px-5 py-2 font-medium text-gray-500">Bought</th>
+                  <th className="text-right px-5 py-2 font-medium text-gray-500">Sold</th>
+                  <th className="text-right px-5 py-2 font-medium text-gray-500">On hand</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {setupResult.map((r) => (
+                  <tr key={r.sold_as}>
+                    <td className="px-5 py-2 text-gray-800">{r.sold_as}</td>
+                    <td className="px-5 py-2 text-right text-green-700">{num(r.bought)}</td>
+                    <td className="px-5 py-2 text-right text-red-600">{num(r.sold)}</td>
+                    <td className="px-5 py-2 text-right font-semibold text-gray-900">{num(r.on_hand)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
