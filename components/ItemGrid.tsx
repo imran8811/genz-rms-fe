@@ -1,27 +1,35 @@
 "use client";
 
 import type { MenuCategory, MenuItem } from "@/lib/types";
-import { formatPKR } from "@/lib/currency";
+import { formatPKR, toAmount } from "@/lib/currency";
 
 interface Props {
   category: MenuCategory | null;
   onPick: (category: MenuCategory, item: MenuItem) => void;
 }
 
+/** A sized item's span across its sizes — one price if they all agree. */
+function rangeLabel(item: MenuItem): string | null {
+  const values = Object.values(item.prices ?? {})
+    .map(toAmount)
+    .filter((v): v is number => v !== undefined);
+  if (values.length === 0) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min === max ? formatPKR(min) : `${formatPKR(min)} – ${formatPKR(max)}`;
+}
+
+/**
+ * The category's `type` says which price an item is meant to carry, but this
+ * falls back to the other rather than printing "—": a card with no price on it
+ * is the one thing the till can't work from, and an item whose shape disagrees
+ * with its category is still cheaper to show than to hide.
+ */
 function priceLabel(category: MenuCategory, item: MenuItem): string {
-  if (category.type === "single" && typeof item.price === "number") {
-    return formatPKR(item.price);
-  }
-  if (category.type === "sized" && item.prices) {
-    const values = Object.values(item.prices).filter(
-      (v): v is number => typeof v === "number"
-    );
-    if (values.length === 0) return "—";
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    return min === max ? formatPKR(min) : `${formatPKR(min)} – ${formatPKR(max)}`;
-  }
-  return "—";
+  const single = toAmount(item.price);
+  const range = rangeLabel(item);
+  if (category.type === "sized") return range ?? (single === undefined ? "—" : formatPKR(single));
+  return single === undefined ? (range ?? "—") : formatPKR(single);
 }
 
 export default function ItemGrid({ category, onPick }: Props) {

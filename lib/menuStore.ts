@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { toAmount } from "./currency";
 import type { Menu, MenuCategory, MenuItem, Restaurant } from "./types";
 
 // The menu is authored in genz-admin and published as a canonical public feed.
@@ -10,7 +11,10 @@ import type { Menu, MenuCategory, MenuItem, Restaurant } from "./types";
 const ADMIN_MENU_URL =
   process.env.NEXT_PUBLIC_ADMIN_MENU_URL ??
   "https://api.admin.genzfoods.pk/api/public/menu";
-const MENU_CACHE_KEY = "rms_menu_cache_v1";
+// v2: prices are coerced to numbers on the way in (see normalizeItem). A v1
+// cache holds the feed's raw strings, which render as "—", so it is discarded
+// rather than painted.
+const MENU_CACHE_KEY = "rms_menu_cache_v2";
 
 let inflight: Promise<Menu> | null = null;
 
@@ -29,14 +33,26 @@ function normalizeCategory(cat: any): MenuCategory {
   };
 }
 
+// Sizes a `sized` item has no price for stay null, so the picker can still show
+// the row as unavailable rather than dropping it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizePrices(prices: any): Record<string, number | null> | undefined {
+  if (!prices || typeof prices !== "object") return undefined;
+  return Object.fromEntries(
+    Object.entries(prices).map(([size, value]) => [size, toAmount(value) ?? null]),
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeItem(item: any): MenuItem {
   return {
     id:             typeof item.id === "string" ? item.id : (item.slug ?? String(item.id)),
     name:           item.name,
     description:    item.description ?? undefined,
-    price:          item.price ?? undefined,
-    prices:         item.prices ?? undefined,
+    // The feed sends a single item's `price` as a string ("400") and a sized
+    // item's `prices` as numbers; everything downstream wants numbers.
+    price:          toAmount(item.price),
+    prices:         normalizePrices(item.prices),
     tag:            item.tag ?? undefined,
     special:        item.special ?? item.is_special ?? undefined,
     signature:      item.signature ?? item.is_signature ?? undefined,
