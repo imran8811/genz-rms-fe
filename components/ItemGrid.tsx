@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { MenuCategory, MenuItem } from "@/lib/types";
 import { formatPKR, toAmount } from "@/lib/currency";
 
@@ -32,7 +33,45 @@ function priceLabel(category: MenuCategory, item: MenuItem): string {
   return single === undefined ? (range ?? "—") : formatPKR(single);
 }
 
+/** The `n` of an item literally named "Deal 12", else null. */
+function dealNumber(name: string): number | null {
+  const match = /^deal\s+(\d+)$/i.exec(name.trim());
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Puts numbered deals in numeric order.
+ *
+ * Items arrive in genz-admin's `sort_order`, which for the deal categories has
+ * drifted out of step with the numbering — the feed currently returns burger
+ * deals as 10, 13, 12, 11, 14. At the till the number *is* how a deal is asked
+ * for and found, so a grid that doesn't count up costs the operator a scan of
+ * every card.
+ *
+ * Only names of the form "Deal <n>" move. Everything else — "Small Pizza +
+ * Zinger", every ordinary menu item — keeps the order genz-admin sent, because
+ * there that order is deliberate and this has no better guess to offer.
+ *
+ * This is presentation only. The fix proper is genz-admin's `sort_order`, which
+ * would also put the customer website right; until then the POS stops guessing.
+ */
+function inDisplayOrder(items: MenuItem[]): MenuItem[] {
+  const decorated = items.map((item, index) => ({ item, index, n: dealNumber(item.name) }));
+  if (!decorated.some((d) => d.n !== null)) return items;
+
+  return decorated
+    .sort((a, b) => {
+      if (a.n !== null && b.n !== null) return a.n - b.n;
+      if (a.n !== null) return -1;
+      if (b.n !== null) return 1;
+      return a.index - b.index; // unnumbered items hold the feed's order
+    })
+    .map((d) => d.item);
+}
+
 export default function ItemGrid({ category, onPick }: Props) {
+  const items = useMemo(() => inDisplayOrder(category?.items ?? []), [category]);
+
   if (!category) {
     return <section className="flex-1 p-6 text-gray-500">No category</section>;
   }
@@ -48,7 +87,7 @@ export default function ItemGrid({ category, onPick }: Props) {
   return (
     <section className="flex-1 overflow-y-auto bg-gray-50 px-4 py-3">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-        {category.items.map((item) => (
+        {items.map((item) => (
           <button
             key={item.id}
             type="button"
