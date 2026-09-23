@@ -36,17 +36,23 @@ import { dismissWebOrder, getDismissedWebOrders } from "@/lib/webOrderAcks";
  */
 
 /**
- * **Temporarily off.** The counter module isn't in use yet, so the 10s poll of
- * `/orders/counter` this component runs on every RMS screen buys nothing — it is
- * six background requests a minute from every open terminal for a board nobody
- * works. Flip this back to `true` when the counter goes live; nothing else has
- * to change (the component is otherwise untouched and keeps working as
- * documented). While it is `false` the poll never starts, the chime is never
- * unlocked and the card never renders.
+ * The counter module is live, so the shell announces online orders again. Set
+ * this to `false` to take the always-on poll back out: the poll never starts,
+ * the chime is never unlocked and the card never renders, and nothing else has
+ * to change.
  */
-const COUNTER_MODULE_ENABLED: boolean = false;
+const COUNTER_MODULE_ENABLED: boolean = true;
 
-const POLL_MS = 10000;
+/**
+ * Five minutes, not the ten seconds the counter board itself uses. This poll
+ * runs on **every** RMS screen, on every open terminal, so its cost is paid all
+ * day whether or not anyone is waiting on an online order; the board at
+ * `/counter` is the screen for watching one land. The gap is smaller in
+ * practice than it looks — returning to the tab re-polls immediately (see the
+ * `visibilitychange` handler below), so it only bites on a terminal that has sat
+ * untouched and in-focus since the last tick.
+ */
+const POLL_MS = 5 * 60 * 1000;
 /**
  * How recent an unhandled online order has to be to still be worth ringing
  * about. Past this the card stays — nobody has dealt with it — but the room
