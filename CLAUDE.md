@@ -13,9 +13,9 @@ Package name: `genz-foods-pos`. Talks to [`genz-rms-apis`](../genz-rms-apis).
 
 `admin` / `user` / `kitchen`. `homeRouteFor()` picks the landing route — dashboard / billing /
 `/orders` — and is what login and every gate redirect to.
-- **`kitchen` is the back-of-house terminal: the orders board, plus the complaints register to
-  read.** `KITCHEN_ROUTES` in `lib/auth.tsx` is the whole list (`/orders` + subpaths,
-  `/complaints`); `RequireAuth` (in the `(rms)` layout and on `/billing`) bounces it off anything
+- **`kitchen` is the back-of-house terminal: the orders board, plus the complaints register and the
+  menu to read.** `KITCHEN_ROUTES` in `lib/auth.tsx` is the whole list (`/orders` + subpaths,
+  `/complaints`, `/billing`); `RequireAuth` (in the `(rms)` layout and on `/billing`) bounces it off anything
   else via `canOpen()`, the sidebar shows only entries flagged `kitchen: true`, and `/orders` hides
   the front desk's **⏱ Time** button for it. None of that is the real gate — `genz-rms-apis`
   `RestrictKitchenUser` 403s every endpoint off its allowlist, so a typed URL gets an empty screen,
@@ -24,8 +24,18 @@ Package name: `genz-foods-pos`. Talks to [`genz-rms-apis`](../genz-rms-apis).
   than its own board's one-day tab, but every button on it (resolve, reopen, delete) is hidden for
   a kitchen login and 403s server-side. A page can be readable to the kitchen while its actions are
   not, and the two are gated separately.
+- **`/billing` is on the list for the menu, not the till.** What a dish is called, what is in it and
+  what it costs is the kitchen's own reference, and it was having to ask the front desk. For that
+  login the page renders the category tabs and the item grid and nothing else: `menuOnly` in
+  `app/billing/page.tsx` drops `BillPanel`, passes `readOnly` to `ItemGrid` (plain `<div>` cards, no
+  picker — not *disabled* buttons, which would sit in the tab order announcing themselves as broken),
+  and skips the `/orders/next-number` and `/staff` calls that would only 403. There is no cart, so
+  there is nothing to place; `RestrictKitchenUser` does not allow `orders`, so `POST /orders` 403s
+  however it is reached. **The menu needs no backend permission at all** — `lib/menuStore.ts` reads it
+  straight from the genz-admin feed, which is why this one page is the exception to the rule below.
 - Adding a page a kitchen login should see means adding it to `KITCHEN_ROUTES`/`canOpen()` here
-  **and** to the middleware's allowlist in the backend.
+  **and** to the middleware's allowlist in the backend — unless, like `/billing`, everything it shows
+  comes from outside the RMS API.
 
 ## Responsive: `md` is the line
 

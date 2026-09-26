@@ -30,8 +30,13 @@ const navGroups: {
         ),
       },
       {
+        // `kitchen: true`, but the menu only — the page renders no bill panel
+        // and no picker for that login, so there is nothing to ring up. The
+        // kitchen needs to look up what a dish is called, what is in it and
+        // what it costs without asking the front desk.
         href: "/billing",
         label: "Billing / POS",
+        kitchen: true,
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 flex-shrink-0">
             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>

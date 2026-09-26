@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth, RequireAuth } from "@/lib/auth";
+import { useAuth, RequireAuth, isKitchenUser } from "@/lib/auth";
 import { useMenu } from "@/lib/menuStore";
 import { cartReducer, cartTotal, initialCart } from "@/lib/cartReducer";
 import { api } from "@/lib/api";
@@ -35,6 +35,15 @@ function BillingContent() {
   const [cart, dispatch] = useReducer(cartReducer, initialCart);
   const [billNumber, setBillNumber] = useState(3005);
 
+  /**
+   * The kitchen opens this page for the **menu**: what a dish is called, what
+   * is in it and what it costs, without having to ask the front desk. It gets
+   * the categories and items and nothing else — no bill panel, no picker, and
+   * none of the till's requests below, every one of which `RestrictKitchenUser`
+   * would 403 anyway.
+   */
+  const menuOnly = isKitchenUser(user);
+
   const loadNextBillNumber = useCallback(async () => {
     try {
       const res = await api.get<{ next: number }>("/orders/next-number");
@@ -45,8 +54,9 @@ function BillingContent() {
   }, []);
 
   useEffect(() => {
+    if (menuOnly) return;
     loadNextBillNumber();
-  }, [loadNextBillNumber]);
+  }, [menuOnly, loadNextBillNumber]);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerState>({ kind: "none" });
   const [deliveryCharge, setDeliveryCharge] = useState<number>(100);
@@ -59,8 +69,9 @@ function BillingContent() {
   const [staffList, setStaffList] = useState<StaffLite[]>([]);
 
   useEffect(() => {
+    if (menuOnly) return;
     api.get<StaffLite[]>("/staff?active=1").then(setStaffList).catch(() => {});
-  }, []);
+  }, [menuOnly]);
 
   const activeCategory = useMemo<MenuCategory | null>(() => {
     if (!menu) return null;
@@ -77,6 +88,7 @@ function BillingContent() {
   }
 
   const handlePickItem = (category: MenuCategory, item: MenuItem) => {
+    if (menuOnly) return; // the grid renders plain cards for it, but belt and braces
     if (item.pizzaSelection) {
       setPicker({ kind: "deal", item });
     } else {
@@ -170,7 +182,8 @@ function BillingContent() {
               <span className="text-xl font-bold tracking-tight text-brand-red">GEN Z</span>
               <span className="text-sm font-medium text-gray-500">FOODS</span>
             </Link>
-            <span className="text-xs text-gray-300 ml-1">/ POS</span>
+            {/* Says at a glance that this terminal isn't a till right now. */}
+            <span className="text-xs text-gray-300 ml-1">{menuOnly ? "/ MENU" : "/ POS"}</span>
           </div>
           <div className="flex items-center gap-4">
             <nav className="flex items-center gap-4">
@@ -188,30 +201,45 @@ function BillingContent() {
               >
                 Orders
               </Link>
-              <Link
-                href="/sales"
-                className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
-              >
-                Sales
-              </Link>
-              <Link
-                href="/purchasing"
-                className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
-              >
-                Purchasing
-              </Link>
-              <Link
-                href="/expenses"
-                className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
-              >
-                Expenses
-              </Link>
-              <Link
-                href="/staff"
-                className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
-              >
-                Staff
-              </Link>
+              {/* Hidden for the kitchen: `canOpen()` would bounce it straight
+                  back off all four, and the API 403s them besides. Offering a
+                  door that slams is worse than not showing it. */}
+              {!menuOnly && (
+                <>
+                  <Link
+                    href="/sales"
+                    className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
+                  >
+                    Sales
+                  </Link>
+                  <Link
+                    href="/purchasing"
+                    className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
+                  >
+                    Purchasing
+                  </Link>
+                  <Link
+                    href="/expenses"
+                    className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
+                  >
+                    Expenses
+                  </Link>
+                  <Link
+                    href="/staff"
+                    className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
+                  >
+                    Staff
+                  </Link>
+                </>
+              )}
+              {menuOnly && (
+                <Link
+                  href="/complaints"
+                  className="text-sm font-medium text-gray-600 transition-colors hover:text-brand-red"
+                >
+                  Complaints
+                </Link>
+              )}
             </nav>
             <button
               onClick={async () => {
@@ -236,25 +264,27 @@ function BillingContent() {
             activeId={activeCategory?.id ?? null}
             onSelect={setActiveCategoryId}
           />
-          <ItemGrid category={activeCategory} onPick={handlePickItem} />
-          <BillPanel
-            cart={cart}
-            dispatch={dispatch}
-            billNumber={billNumber}
-            onPrint={handlePrint}
-            onSave={handleSave}
-            deliveryCharge={deliveryCharge}
-            onDeliveryChargeChange={setDeliveryCharge}
-            extraTopping={extraTopping}
-            onExtraToppingChange={setExtraTopping}
-            notes={notes}
-            onNotesChange={setNotes}
-            staffFood={staffFood}
-            onStaffFoodToggle={setStaffFood}
-            staffFoodId={staffFoodId}
-            onStaffFoodChange={setStaffFoodId}
-            staffList={staffList}
-          />
+          <ItemGrid category={activeCategory} onPick={handlePickItem} readOnly={menuOnly} />
+          {!menuOnly && (
+            <BillPanel
+              cart={cart}
+              dispatch={dispatch}
+              billNumber={billNumber}
+              onPrint={handlePrint}
+              onSave={handleSave}
+              deliveryCharge={deliveryCharge}
+              onDeliveryChargeChange={setDeliveryCharge}
+              extraTopping={extraTopping}
+              onExtraToppingChange={setExtraTopping}
+              notes={notes}
+              onNotesChange={setNotes}
+              staffFood={staffFood}
+              onStaffFoodToggle={setStaffFood}
+              staffFoodId={staffFoodId}
+              onStaffFoodChange={setStaffFoodId}
+              staffList={staffList}
+            />
+          )}
         </div>
       </main>
 

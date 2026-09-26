@@ -7,6 +7,12 @@ import { formatPKR, toAmount } from "@/lib/currency";
 interface Props {
   category: MenuCategory | null;
   onPick: (category: MenuCategory, item: MenuItem) => void;
+  /**
+   * Render the menu as a reference rather than a till — cards are plain, not
+   * pressable, and `onPick` is never called. Used by the kitchen login, which
+   * may read the menu but not ring anything up.
+   */
+  readOnly?: boolean;
 }
 
 /** A sized item's span across its sizes — one price if they all agree. */
@@ -69,7 +75,37 @@ function inDisplayOrder(items: MenuItem[]): MenuItem[] {
     .map((d) => d.item);
 }
 
-export default function ItemGrid({ category, onPick }: Props) {
+const CARD_CLASS =
+  "flex min-h-[88px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm";
+
+/**
+ * A tile is a `<button>` at the till and a plain `<div>` when the menu is only
+ * being read. Not a disabled button: a card nobody may press is not a broken
+ * control, and rendering it as one would put it in the tab order announcing
+ * itself as unavailable.
+ */
+function Card({
+  readOnly,
+  onPick,
+  children,
+}: {
+  readOnly: boolean;
+  onPick: () => void;
+  children: React.ReactNode;
+}) {
+  if (readOnly) return <div className={CARD_CLASS}>{children}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={`${CARD_CLASS} group transition active:scale-[0.98] active:bg-gray-50`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function ItemGrid({ category, onPick, readOnly = false }: Props) {
   const items = useMemo(() => inDisplayOrder(category?.items ?? []), [category]);
 
   if (!category) {
@@ -88,12 +124,7 @@ export default function ItemGrid({ category, onPick }: Props) {
     <section className="flex-1 overflow-y-auto bg-gray-50 px-4 py-3">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
         {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onPick(category, item)}
-            className="group flex min-h-[88px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition active:scale-[0.98] active:bg-gray-50"
-          >
+          <Card key={item.id} readOnly={readOnly} onPick={() => onPick(category, item)}>
             <div className="flex items-start justify-between gap-2">
               <span className="text-sm font-semibold leading-tight text-gray-900">
                 {item.name}
@@ -117,7 +148,7 @@ export default function ItemGrid({ category, onPick }: Props) {
             <span className="mt-2 text-sm font-bold text-brand-red">
               {priceLabel(category, item)}
             </span>
-          </button>
+          </Card>
         ))}
       </div>
     </section>

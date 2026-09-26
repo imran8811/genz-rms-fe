@@ -92,8 +92,17 @@ export const KITCHEN_HOME = "/orders";
  * further back than that. It cannot act on what it finds there: the API allows
  * the kitchen the register and nothing else on it (see `RestrictKitchenUser`),
  * so resolving, reopening and deleting are hidden for it in the UI.
+ *
+ * `/billing` is on the list for the **menu**, not the till: what a dish is
+ * called, what is in it and what it costs is the kitchen's own reference, and
+ * it was having to ask the front desk. It gets the categories and items and
+ * nothing else — the bill panel is not rendered and the cards don't open a
+ * picker, so there is no cart to place. That is a UI convenience on top of the
+ * real gate: `RestrictKitchenUser` does not allow `orders`, so a kitchen login
+ * cannot create an order however it reaches the endpoint. The menu itself needs
+ * no backend permission at all — it is read straight from the genz-admin feed.
  */
-const KITCHEN_ROUTES = [KITCHEN_HOME, "/complaints"];
+const KITCHEN_ROUTES = [KITCHEN_HOME, "/complaints", "/billing"];
 
 /** Is this the back-of-house login, restricted to the orders board? */
 export function isKitchenUser(user: Pick<AuthUser, "role"> | null | undefined): boolean {
