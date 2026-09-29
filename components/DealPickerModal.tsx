@@ -61,9 +61,15 @@ export default function DealPickerModal({ deal, menu, onClose, onAdd }: Props) {
 
   const submit = () => {
     if (!ready) return;
+    // The size is part of the order, not decoration: the same deal exists in
+    // Small/Medium/Large and the flavour alone ("Fajita Pizza") tells the
+    // kitchen nothing about which tray to use. It is baked into the selection
+    // text here rather than in each renderer so the kitchen board, the bill
+    // slip and the stored order all carry it.
     const pizzaNames = picks
       .map((id) => choices.find((c) => c.id === id)?.name)
-      .filter((n): n is string => Boolean(n));
+      .filter((n): n is string => Boolean(n))
+      .map((name) => (selection.size ? `${selection.size} ${name}` : name));
     const dealSelections = deal.dealExtras
       ? [...pizzaNames, ...deal.dealExtras]
       : pizzaNames;

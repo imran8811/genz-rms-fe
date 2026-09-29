@@ -44,6 +44,8 @@ interface OrderItem {
   unit_price: number;
   quantity: number;
   line_total: number;
+  /** What was picked inside a deal — shown under the line, and on the slip. */
+  deal_selections?: string[] | null;
 }
 
 interface ApiOrder {
@@ -710,6 +712,13 @@ export default function SalesPage() {
                               <td className="px-4 py-2.5 text-gray-700">
                                 <div className="font-medium">{item.item_name}</div>
                                 {item.size && <div className="text-gray-400">{item.size}</div>}
+                                {item.deal_selections && item.deal_selections.length > 0 && (
+                                  <div className="text-xs text-gray-400">
+                                    {item.deal_selections.map((sel, i) => (
+                                      <div key={i}>↳ {sel}</div>
+                                    ))}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-2.5 text-right text-gray-600">{fmt(item.unit_price)}</td>
                               <td className="px-4 py-2.5 text-center text-gray-600">{item.quantity}</td>

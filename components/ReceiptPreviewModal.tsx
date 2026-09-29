@@ -11,6 +11,8 @@ interface ReceiptItem {
   unit_price: number;
   quantity: number;
   line_total: number;
+  /** What was picked inside a deal ("Small Fajita Pizza", "Drink 500ml"). */
+  deal_selections?: string[] | null;
 }
 
 interface ReceiptOrder {
@@ -121,6 +123,14 @@ function renderReceiptToBlob(order: ReceiptOrder, restaurant: Restaurant): Promi
       y += size + 5;
     });
   };
+  /** An indented continuation line — a deal's contents under its bill line. */
+  const sub = (text: string, size: number) => {
+    const f = font(size, false);
+    for (const ln of wrap(text, f, contentW - 14)) {
+      ops.push({ t: "text", text: ln, x: padX + 14, y, font: f, align: "left" });
+      y += size + 4;
+    }
+  };
   const rule = () => {
     y += 6;
     ops.push({ t: "rule", y });
@@ -142,6 +152,9 @@ function renderReceiptToBlob(order: ReceiptOrder, restaurant: Restaurant): Promi
   order.items.forEach((i) => {
     const name = `${i.item_name}${i.size ? ` (${i.size})` : ""} x ${i.quantity}`;
     row(name, formatPKR(i.line_total), 13);
+    // A deal line is just a price without them — "Small Pizza + Zinger" says
+    // nothing about which pizza was made.
+    (i.deal_selections ?? []).forEach((sel) => sub(`↳ ${sel}`, 11));
   });
   rule();
 
@@ -277,9 +290,18 @@ export default function ReceiptPreviewModal({ order, restaurant, onClose }: Prop
                 {order.items.map((line) => (
                   <tr key={line.id}>
                     <td style={{ verticalAlign: "top", paddingBottom: "2px" }}>
-                      {line.item_name}
-                      {line.size ? ` (${line.size})` : ""}
-                      <span style={{ fontWeight: 700 }}> × {line.quantity}</span>
+                      <div>
+                        {line.item_name}
+                        {line.size ? ` (${line.size})` : ""}
+                        <span style={{ fontWeight: 700 }}> × {line.quantity}</span>
+                      </div>
+                      {line.deal_selections && line.deal_selections.length > 0 && (
+                        <div style={{ paddingLeft: "10px", fontSize: "0.85em" }}>
+                          {line.deal_selections.map((sel, i) => (
+                            <div key={i}>↳ {sel}</div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td style={{ textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap", paddingLeft: "6px" }}>
                       {formatPKR(line.line_total)}
