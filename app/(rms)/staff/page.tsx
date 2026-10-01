@@ -136,7 +136,7 @@ function toMinutes(time: string | null): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-/** "2PM–2AM" → 14:00, "5PM–2AM" → 17:00; shifts with no time in them fall back. */
+/** "1PM–1AM" → 13:00, "5PM–1AM" → 17:00; shifts with no time in them fall back. */
 function shiftStartMinutes(shift: string | null, fallback: string) {
   const m = shift?.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
   if (m) {
@@ -163,7 +163,7 @@ function LoadingRow({ cols }: { cols: number }) {
 
 // ─── Empty form defaults ──────────────────────────────────────────────────────
 
-const emptyStaffForm   = { name: "", role: "Cashier" as Role, phone: "", shift: "2PM–2AM", salary: "", join_date: "", is_active: true };
+const emptyStaffForm   = { name: "", role: "Cashier" as Role, phone: "", shift: "1PM–1AM", salary: "", join_date: "", is_active: true };
 const emptyLeaveForm   = { staff_id: "", leave_type: "casual" as LeaveType, start_date: "", end_date: "", reason: "", notes: "" };
 const emptyAdvanceForm = { staff_id: "", amount: "", given_date: todayStr(), repayment_month: currentMonthStr(), reason: "", notes: "" };
 const emptyFoodForm    = () => ({ staff_id: "", item_name: "", quantity: "1", unit_price: "", consumed_at: todayStr(), notes: "", added_by: "" });
@@ -208,7 +208,7 @@ export default function StaffPage() {
   const [clockTick, setClockTick]                   = useState(() => new Date());
   // Status as the server last stored it, per staff id (absent from the map =
   // no record yet). Only someone *not* already marked in gets stamped on save,
-  // so the preview has to know the difference between "present since 2pm, no
+  // so the preview has to know the difference between "present since 1pm, no
   // time recorded" and "being marked in right now".
   const [savedStatus, setSavedStatus]               = useState<Record<number, AttendanceStatus>>({});
   const [historyRecords, setHistoryRecords]         = useState<AttendanceRecord[]>([]);
@@ -930,8 +930,8 @@ export default function StaffPage() {
           check-in: leave the time blank and saving stamps the current time — only for people not
           already marked in, so re-saving later never re-stamps the sheet. Anyone stamped more than
           {" "}{fineRule.grace_minutes} minutes past their shift start is fined {fmt(fineRule.amount)}
-          {" "}(2PM shift → from {(() => {
-            const t = shiftStartMinutes("2PM", fineRule.default_shift_start) + fineRule.grace_minutes + 1;
+          {" "}(1PM shift → from {(() => {
+            const t = shiftStartMinutes("1PM", fineRule.default_shift_start) + fineRule.grace_minutes + 1;
             return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
           })()}). Type a time to override the stamp — that re-prices or removes the fine.
           Past days are never stamped: type the time in to fine someone retrospectively.
@@ -1600,7 +1600,7 @@ export default function StaffPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Shift</label>
                 <select value={staffForm.shift} onChange={(e) => setStaffForm({ ...staffForm, shift: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red">
-                  <option>Full Day</option><option>2PM–2AM</option><option>5PM–2AM</option><option>Morning</option>
+                  <option>Full Day</option><option>1PM–1AM</option><option>5PM–2AM</option><option>Morning</option>
                 </select>
               </div>
             </div>

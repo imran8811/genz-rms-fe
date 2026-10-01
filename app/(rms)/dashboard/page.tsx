@@ -539,7 +539,7 @@ function DashboardContent() {
               }
             />
             <KpiCard
-              label="Orders 2PM–4PM"
+              label="Orders 1PM–4PM"
               value={monthlySales ? (monthlySales.window_2_4?.orders ?? 0).toString() : "—"}
               sub={monthlySales ? `${fmt(Number(monthlySales.window_2_4?.revenue ?? 0))} total` : undefined}
               color="#16a34a"

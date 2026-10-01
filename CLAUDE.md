@@ -378,7 +378,7 @@ register plus manual CRUD (add / edit / delete any fine — breakage, uniform, w
   stamped say *"stamps 17:30 on save"* under the time box, and the Late Fine column previews what
   that stamp will cost, ticking each minute (`clockTick`). Typing a time overrides the stamp.
   `savedStatus` holds the status as the server last stored it, which is what tells the preview
-  apart "present since 2pm, no time recorded" (no stamp) from "being marked in now" (stamp).
+  apart "present since 1pm, no time recorded" (no stamp) from "being marked in now" (stamp).
 - The time box is the browser's native widget, so a 12-hour locale renders a stored `17:45` as
   **`05:45 PM`** — that is display, not data.
 - The **Attendance tab previews the fine live**: `minutesLate()` / `shiftStartMinutes()` at the top
