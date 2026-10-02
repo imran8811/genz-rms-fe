@@ -12,8 +12,8 @@ interface SalesSummary {
   /** Keyed by channel: Food Panda is its own bucket, not part of Takeaway. */
   by_type: Record<"Dine-in" | "Takeaway" | "Delivery" | "Food Panda", { count: number; revenue: number }>;
   foodpanda?: { orders: number; revenue: number };
-  window_2_4?: { orders: number; revenue: number };
-  window_4_6?: { orders: number; revenue: number };
+  window_1_3?: { orders: number; revenue: number };
+  window_3_5?: { orders: number; revenue: number };
 }
 
 interface ExpenseSummary {
@@ -526,9 +526,9 @@ function DashboardContent() {
               }
             />
             <KpiCard
-              label="Orders 4PM–6PM"
-              value={monthlySales ? (monthlySales.window_4_6?.orders ?? 0).toString() : "—"}
-              sub={monthlySales ? `${fmt(Number(monthlySales.window_4_6?.revenue ?? 0))} total` : undefined}
+              label="Orders 3PM–5PM"
+              value={monthlySales ? (monthlySales.window_3_5?.orders ?? 0).toString() : "—"}
+              sub={monthlySales ? `${fmt(Number(monthlySales.window_3_5?.revenue ?? 0))} total` : undefined}
               color="#2563eb"
               loading={loading}
               icon={
@@ -539,9 +539,9 @@ function DashboardContent() {
               }
             />
             <KpiCard
-              label="Orders 1PM–4PM"
-              value={monthlySales ? (monthlySales.window_2_4?.orders ?? 0).toString() : "—"}
-              sub={monthlySales ? `${fmt(Number(monthlySales.window_2_4?.revenue ?? 0))} total` : undefined}
+              label="Orders 1PM–3PM"
+              value={monthlySales ? (monthlySales.window_1_3?.orders ?? 0).toString() : "—"}
+              sub={monthlySales ? `${fmt(Number(monthlySales.window_1_3?.revenue ?? 0))} total` : undefined}
               color="#16a34a"
               loading={loading}
               icon={
