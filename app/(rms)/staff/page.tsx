@@ -8,7 +8,13 @@ import { useAuth } from "@/lib/auth";
 
 type Role             = "Manager" | "Chef" | "Cashier" | "Rider" | "Waiter" | "Helper";
 type Tab              = "staff" | "attendance" | "leaves" | "advances" | "fines" | "food" | "payroll";
-type AttendanceStatus = "present" | "absent" | "half_day" | "late";
+/**
+ * Three statuses. There is **no `late`**: someone late was always *present*,
+ * and the arrival time in `check_in_time` is what records it. The status existed
+ * because attendance marking used to charge a fine by itself and needed to show
+ * that it had fired; fines are charged by hand now.
+ */
+type AttendanceStatus = "present" | "absent" | "half_day";
 type LeaveType        = "sick" | "casual" | "annual" | "unpaid";
 
 interface StaffMember {
@@ -38,13 +44,31 @@ interface AdvanceRecord {
 
 interface FineRecord {
   id: number; staff_id: number; amount: number; fine_date: string;
-  source: "auto_late" | "manual"; minutes_late: number | null;
+  // The row also carries `minutes_late`; nothing reads it since the Late Fine
+  // column stopped reporting lateness, so it isn't modelled.
+  source: "auto_late" | "manual";
   reason: string | null; notes: string | null;
   staff?: { id: number; name: string; role: string };
 }
 
 /** The late-fine rule, read from the backend so the two never drift apart. */
-interface FineRule { amount: number; grace_minutes: number; default_shift_start: string }
+// `GET /staff-fines/rule` also returns `grace_minutes` and `default_shift_start`;
+// neither is read any more, so neither is modelled here.
+interface FineRule { amount: number }
+
+/**
+ * Force `staff_id` to a number on the way in.
+ *
+ * The attendance screen matches a fine to its row by identity
+ * (`f.staff_id === s.id`), and `staff_id` is only as typed as the database
+ * driver feels like making it — a string gets through under some PDO setups.
+ * That match then fails silently: a person who **has** been fined still shows an
+ * "Add fine" link, and pressing it charges them a second time. The backend casts
+ * the column too; this keeps the screen right against an API that hasn't been
+ * redeployed yet, and is the one place the whole tab ingests fines.
+ */
+const normalizeFines = (rows: FineRecord[]): FineRecord[] =>
+  rows.map((f) => ({ ...f, staff_id: Number(f.staff_id) }));
 
 interface FoodLogEntry {
   id: number; staff_id: number; item_name: string;
@@ -91,15 +115,20 @@ const ROLE_COLORS: Record<Role, string> = {
 };
 
 const ATTENDANCE_LABELS: Record<AttendanceStatus, string> = {
-  present: "Present", absent: "Absent", half_day: "Half Day", late: "Late",
+  present: "Present", absent: "Absent", half_day: "Half Day",
 };
 
 const ATTENDANCE_COLORS: Record<AttendanceStatus, string> = {
   present:  "bg-green-100 text-green-700",
   absent:   "bg-red-100 text-red-700",
   half_day: "bg-yellow-100 text-yellow-700",
-  late:     "bg-orange-100 text-orange-700",
 };
+
+// History rows written before `late` was dropped still carry it until the
+// conversion migration has run, and an unknown key would render a blank badge.
+// Read-only display only — the editable dropdown offers the three real statuses.
+const attendanceLabel = (st: AttendanceStatus) => ATTENDANCE_LABELS[st] ?? st;
+const attendanceColor = (st: AttendanceStatus) => ATTENDANCE_COLORS[st] ?? "bg-gray-100 text-gray-600";
 
 const LEAVE_LABELS: Record<LeaveType, string> = {
   sick: "Sick", casual: "Casual", annual: "Annual", unpaid: "Unpaid",
@@ -129,34 +158,20 @@ function fmtDate(d: string | null) {
 /**
  * The restaurant's one and only shift. There is no second shift, no "Full Day"
  * and no "Morning": `staff.shift` is a label every row carries the same value
- * of, and the late-fine clock comes from the backend setting (see
- * `shiftStartMinutes`), never from this string.
+ * of. Purely a display string — nothing is computed from it.
  */
 const THE_SHIFT = "1PM–1AM";
 
-// Late-fine arithmetic, mirroring App\Services\LateFineService on the backend —
-// the backend still decides what is actually charged; this only lets the
-// attendance screen show the fine as the check-in time is typed.
-const FALLBACK_RULE: FineRule = { amount: 200, grace_minutes: 30, default_shift_start: "13:00" };
-
-function toMinutes(time: string | null): number | null {
-  const m = time?.match(/^(\d{1,2}):(\d{2})/);
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-
 /**
- * When the shift starts, as minutes past midnight. **One shift for everyone**
- * (1PM–1AM), so this takes no staff member: it used to parse a per-person shift
- * string and no longer does. `rule.default_shift_start` is the backend's answer.
+ * Used if `GET /staff-fines/rule` can't be reached, so Add fine still quotes a
+ * number. **This screen no longer does any lateness arithmetic**: it had a
+ * `minutesLate()` / `shiftStartMinutes()` / `toMinutes()` trio mirroring
+ * `LateFineService`, which drove the "31 min late" preview and sorted a typed
+ * time into Present vs Late. Both are gone — the preview was removed, and `late`
+ * is no longer a status — so the whole mirror went with them. The backend
+ * decides what a fine costs; this only needs the amount to put on the button.
  */
-function shiftStartMinutes(fallback: string) {
-  return toMinutes(fallback) ?? 13 * 60;
-}
-
-function minutesLate(checkIn: string | null, rule: FineRule) {
-  const arrived = toMinutes(checkIn);
-  return arrived === null ? null : Math.max(0, arrived - shiftStartMinutes(rule.default_shift_start));
-}
+const FALLBACK_RULE: FineRule = { amount: 200 };
 
 function LoadingRow({ cols }: { cols: number }) {
   return (
@@ -209,16 +224,20 @@ export default function StaffPage() {
   const [attendanceMap, setAttendanceMap]           = useState<Record<number, { status: AttendanceStatus; check_in_time: string }>>({});
   const [attendanceLoading, setAttendanceLoading]   = useState(false);
   const [attendanceSaving, setAttendanceSaving]     = useState(false);
-  // Late fines standing on the shown day. Saving attendance charges nothing, so
-  // this is fetched for the date rather than read out of the save's response,
-  // and it is what the Add/Remove link in the Late Fine column acts on.
+  // Late fines standing on the shown day **as the server has them**. Fetched for
+  // the date rather than read out of a save's response, and re-read after one.
   const [dayFines, setDayFines]                     = useState<FineRecord[]>([]);
-  // Which staff row has an add/remove in flight, so only that link disables.
-  const [fineBusyFor, setFineBusyFor]               = useState<number | null>(null);
+  // Fine changes the manager has made on screen but not saved yet, keyed by
+  // staff id: `true` = charge this one on save, `false` = take it back off on
+  // save. A staff id that isn't here has no pending change. Add/Remove only
+  // write *here* — nothing reaches the API until Save Attendance is pressed, so
+  // the whole sheet, times and fines together, commits in one action.
+  const [fineIntent, setFineIntent]                 = useState<Record<number, boolean>>({});
   // Set after a successful save, purely as confirmation — there is no longer a
   // list of charges to report, because a save makes none.
   const [attendanceSaved, setAttendanceSaved]       = useState<string | null>(null);
-  // Ticks each minute so the "will be stamped" lateness preview stays truthful.
+  // Ticks each minute so the "stamps 17:30 on save" hint under a blank time box
+  // keeps naming the time a save would actually write.
   const [clockTick, setClockTick]                   = useState(() => new Date());
   // Status as the server last stored it, per staff id (absent from the map =
   // no record yet). Only someone *not* already marked in gets stamped on save,
@@ -313,13 +332,16 @@ export default function StaffPage() {
   // whether to offer Add or Remove. Narrowed to the one date (`from`/`to`) and
   // to late fines — a manual fine on the same day belongs to the Fines tab and
   // must not show up here as something this screen can take back off.
-  // Returns its promise: `saveAttendance` awaits it, so a re-read started by a
-  // save can't land *after* a charge made right behind it and wipe the new fine
-  // off the screen.
+  // Returns its promise so `saveAttendance` can await it as its last step,
+  // after writing the staged fines — the list on screen is then what the server
+  // actually holds, not what the writes were expected to produce.
   const fetchDayFines = useCallback(() => {
     return api.get<FineRecord[]>(`/staff-fines?from=${attendanceDate}&to=${attendanceDate}&source=auto_late`)
-      .then(setDayFines)
-      .catch(() => setDayFines([]));
+      .then((rows) => setDayFines(normalizeFines(rows)))
+      // Leave the last known list in place on failure. Clearing it would show
+      // every charged row as uncharged — offering Add fine on someone already
+      // fined, which is how you double-charge a salary over a dropped request.
+      .catch(() => {});
   }, [attendanceDate]);
 
   const fetchAttendance = useCallback(() => {
@@ -335,7 +357,15 @@ export default function StaffPage() {
   }, [attendanceDate, staff, applyRecords]);
 
   useEffect(() => {
-    if (activeTab === "attendance") { fetchAttendance(); fetchDayFines(); }
+    if (activeTab !== "attendance") return;
+    // Dropped here, not in `fetchDayFines`, which deliberately keeps its last
+    // list on a failed refresh: switching day must not leave yesterday's fines
+    // on screen, but a dropped refresh after a charge must not erase them.
+    // Staged changes go too — they were about the day being left.
+    setDayFines([]);
+    setFineIntent({});
+    fetchAttendance();
+    fetchDayFines();
   }, [activeTab, attendanceDate, fetchAttendance, fetchDayFines]);
 
   const fetchHistory = useCallback((page: number) => {
@@ -409,7 +439,7 @@ export default function StaffPage() {
     const params = new URLSearchParams({ month: finesMonth });
     if (finesStaffFilter) params.set("staff_id", finesStaffFilter);
     api.get<FineRecord[]>(`/staff-fines?${params}`)
-      .then(setFines)
+      .then((rows) => setFines(normalizeFines(rows)))
       .catch((e: Error) => setError(e.message))
       .finally(() => setFinesLoading(false));
   }, [finesMonth, finesStaffFilter]);
@@ -519,14 +549,13 @@ export default function StaffPage() {
   // ─── Attendance handlers ──────────────────────────────────────────────────
 
   /**
-   * Save the sheet. Returns whether it landed, so Add fine can save first and
-   * only charge if the row it is about to charge actually reached the server.
+   * Commit the whole sheet: the attendance times first, then the fine changes
+   * staged against this day. **This is the only thing on the Attendance tab that
+   * writes anything** — the Add fine / Remove links just mark rows.
    *
-   * `quiet` leaves the green "Attendance saved" note alone: a save made on the
-   * way to charging a fine is plumbing, and that note says *no fine was
-   * charged*, which would be the opposite of what just happened.
+   * Returns whether everything landed.
    */
-  const saveAttendance = async ({ quiet = false } = {}): Promise<boolean> => {
+  const saveAttendance = async (): Promise<boolean> => {
     const active = staff.filter((s) => s.is_active);
     if (!active.length) return false;
     setAttendanceSaving(true);
@@ -548,13 +577,49 @@ export default function StaffPage() {
       );
       const stored = Array.isArray(res) ? res : res?.records;
       if (stored) applyRecords(stored);
-      if (!quiet) setAttendanceSaved(attendanceDate);
-      // The stamp the save just wrote changes who looks late, and a day that
-      // was charged before may now read differently — re-read what is standing.
-      // Awaited, so this has settled before Add fine charges anything on top.
+
+      // Then the fines that were queued against this day. Attendance goes first
+      // on purpose: the API prices a fine off the *stored* check-in time and
+      // refuses a day that has no attendance saved, so the times have to be down
+      // before the charge is asked for.
+      //
+      // Only genuine differences are sent — clicking Add and then Remove on the
+      // same row leaves the server exactly as it was and costs no request.
+      const charged = new Set(dayFines.map((f) => Number(f.staff_id)));
+      const changes = Object.entries(fineIntent)
+        .map(([id, wanted]) => [Number(id), wanted] as const)
+        .filter(([staffId, wanted]) => wanted !== charged.has(staffId));
+
+      // One request each rather than one bulk call: the fine endpoints are keyed
+      // by (staff, date) and idempotent, and a sheet is a dozen people at most.
+      // A failure is reported per person and **keeps that row's pending change**,
+      // so a retry is pressing Save again rather than re-clicking every link.
+      const stuck: Record<number, boolean> = {};
+      const failures: string[] = [];
+      for (const [staffId, wanted] of changes) {
+        try {
+          if (wanted) {
+            await api.post("/staff-fines/late", { staff_id: staffId, fine_date: attendanceDate });
+          } else {
+            await api.delete(`/staff-fines/late?staff_id=${staffId}&fine_date=${attendanceDate}`);
+          }
+        } catch (e) {
+          stuck[staffId] = wanted;
+          failures.push(`${staffMap[staffId]?.name ?? `#${staffId}`} — ${(e as Error).message}`);
+        }
+      }
+      setFineIntent(stuck);
+
+      if (failures.length) {
+        setError(`Attendance saved, but these fines did not go through: ${failures.join("; ")}`);
+      } else {
+        setAttendanceSaved(attendanceDate);
+      }
+
+      // Re-read what is actually standing now, rather than trusting the writes.
       await fetchDayFines();
 
-      return true;
+      return failures.length === 0;
     } catch (e) {
       // Loud and persistent: a save that failed must not leave the typed times
       // sitting there looking saved.
@@ -568,25 +633,18 @@ export default function StaffPage() {
   const handleSaveAttendance = () => { void saveAttendance(); };
 
   // Typing a check-in time is the manager saying "this person turned up", so the
-  // row stops being Absent — and turns Late by itself once the time is past the
-  // grace period, which is the same line the fine is charged on. Half Day is
-  // left alone: that's a decision about the day, not about the arrival.
+  // row stops being Absent. It no longer sorts them into Present vs Late by the
+  // grace period — a late arrival *is* a present day, and the time itself says
+  // when they got in. Half Day is left alone: that's a decision about the day,
+  // not about the arrival. Clearing the box leaves the status as it was.
   const setCheckIn = (s: StaffMember, value: string) => {
     setAttendanceMap((prev) => {
       const entry = prev[s.id] ?? { status: "absent" as AttendanceStatus, check_in_time: "" };
-      const late  = minutesLate(value || null, fineRule);
       const status: AttendanceStatus =
-        entry.status === "half_day" || late === null ? entry.status
-        : late > fineRule.grace_minutes             ? "late"
-        : "present";
+        entry.status === "half_day" || !value ? entry.status : "present";
+
       return { ...prev, [s.id]: { status, check_in_time: value } };
     });
-  };
-
-  const markAllPresent = () => {
-    const map: Record<number, { status: AttendanceStatus; check_in_time: string }> = {};
-    staff.filter((s) => s.is_active).forEach((s) => { map[s.id] = { status: "present", check_in_time: "" }; });
-    setAttendanceMap(map);
   };
 
   const shiftDate = (days: number) => {
@@ -595,50 +653,36 @@ export default function StaffPage() {
     setAttendanceDate(ymd(d));
   };
 
-  // ─── Late-fine handlers (the Add / Remove link on each attendance row) ────
+  // ─── Late-fine staging (the Add / Remove link on each attendance row) ─────
 
-  // Charging and clearing are keyed by (staff, date) rather than by fine id, so
-  // the row can act on what it is already showing.
-  //
-  // The backend prices the fine from the **stored** check-in time, so **Add
-  // fine saves the sheet first** — every time, not just when the row is missing
-  // from it. Two reasons:
-  //  - Refusing the click instead (the first cut) made the feature look missing:
-  //    the link sat there as dead text until someone happened to press Save.
-  //  - A row edited since the last save would otherwise be priced off the old
-  //    stored time, or 422 as "marked Absent" while the screen says Present.
-  // Saving is idempotent and the sheet it sends is exactly what is on screen, so
-  // the fine always matches what the manager is looking at.
-  const handleAddLateFine = async (s: StaffMember) => {
-    setFineBusyFor(s.id);
-    setError(null);
-    try {
-      if (! await saveAttendance({ quiet: true })) {
-        return;   // the save failed and has already said so — don't charge
-      }
-      const fine = await api.post<FineRecord>("/staff-fines/late", {
-        staff_id: s.id, fine_date: attendanceDate,
-      });
-      // Replace rather than append: one late fine per person per day, and
-      // pressing Add on an already-charged row re-prices that same row.
-      setDayFines((prev) => [...prev.filter((f) => f.staff_id !== s.id), fine]);
-    } catch (e) {
-      setError(`Could not charge the late fine — ${(e as Error).message}`);
-    } finally { setFineBusyFor(null); }
+  // **Neither of these calls the API.** They mark what the row should end up as
+  // and nothing more; `saveAttendance` is what writes the times and the fines,
+  // in that order, when Save Attendance is pressed. So the sheet behaves like
+  // one form: nothing on this screen is committed until it is saved, and a fine
+  // clicked by mistake is undone by clicking the other link, not by a round trip
+  // that has already taken money off someone.
+  const queueLateFine = (s: StaffMember, wanted: boolean) => {
+    setFineIntent((prev) => ({ ...prev, [s.id]: wanted }));
+    setAttendanceSaved(null);   // there are unsaved changes again
   };
 
-  const handleRemoveLateFine = async (s: StaffMember) => {
-    setFineBusyFor(s.id);
-    setError(null);
-    try {
-      await api.delete(`/staff-fines/late?staff_id=${s.id}&fine_date=${attendanceDate}`);
-      setDayFines((prev) => prev.filter((f) => f.staff_id !== s.id));
-    } catch (e) {
-      setError(`Could not remove the late fine — ${(e as Error).message}`);
-      // Another terminal may have cleared it already: re-read rather than
-      // leaving the row offering Remove for a fine that is no longer there.
-      fetchDayFines();
-    } finally { setFineBusyFor(null); }
+  // Marking someone Absent drops a *queued* fine with it — you cannot be late
+  // for a day you never came in on, and the API refuses it anyway. A fine
+  // already charged stays on screen so it can be taken off deliberately.
+  const setStatus = (s: StaffMember, status: AttendanceStatus) => {
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [s.id]: { ...(prev[s.id] ?? { status: "absent" as AttendanceStatus, check_in_time: "" }), status },
+    }));
+    if (status === "absent") {
+      setFineIntent((prev) => {
+        if (prev[s.id] !== true) return prev;
+        const next = { ...prev };
+        delete next[s.id];
+
+        return next;
+      });
+    }
   };
 
   // ─── Leave handlers ───────────────────────────────────────────────────────
@@ -893,11 +937,17 @@ export default function StaffPage() {
   function renderAttendanceTab() {
     const isToday = attendanceDate === todayStr();
     // Marking someone in with no time typed stamps the moment of marking, so
-    // the preview for those rows runs off the clock (ticking each minute).
+    // those rows name that time under the box (ticking each minute).
     const nowHHMM = `${String(clockTick.getHours()).padStart(2, "0")}:${String(clockTick.getMinutes()).padStart(2, "0")}`;
     // At most one late fine per person per day, so a plain lookup is enough.
-    const fineFor = (staffId: number) => dayFines.find((f) => f.staff_id === staffId);
-    const chargedTotal = dayFines.reduce((a, f) => a + f.amount, 0);
+    // `Number()` belt-and-braces on top of `normalizeFines`: this identity match
+    // is the one that, when it fails, offers Add fine to someone already fined.
+    const fineFor = (staffId: number) => dayFines.find((f) => Number(f.staff_id) === staffId);
+    // Staged changes that would actually alter something: clicking Add and then
+    // Remove on the same row cancels out and is not an unsaved change.
+    const chargedIds = new Set(dayFines.map((f) => Number(f.staff_id)));
+    const pendingFineCount = Object.entries(fineIntent)
+      .filter(([staffId, wanted]) => wanted !== chargedIds.has(Number(staffId))).length;
     return (
       <div className="p-6">
         <div className="flex items-center gap-3 mb-5">
@@ -906,48 +956,21 @@ export default function StaffPage() {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red" />
           <button onClick={() => shiftDate(1)} disabled={isToday}
             className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 text-sm disabled:opacity-40">▶</button>
-          <span className="text-sm text-gray-500 ml-1">{fmtDate(attendanceDate)}</span>
-          <div className="ml-auto flex gap-2">
-            <button onClick={markAllPresent}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700">
-              ✓ Mark All Present
-            </button>
-            <button onClick={handleSaveAttendance} disabled={attendanceSaving}
-              className="px-4 py-2 text-sm font-medium bg-brand-red text-white rounded-lg hover:bg-brand-red-dark disabled:opacity-50">
-              {attendanceSaving ? "Saving…" : "Save Attendance"}
-            </button>
-          </div>
         </div>
 
-        {/* Saving records the day; it charges nothing. The note says so plainly,
-            because this screen used to fine people on save and a manager who
-            remembers that needs telling where the money went. */}
+        {/* The one note on this tab: the save confirmation. There is no summary
+            of what the day costs — each row already shows its own charge. */}
         {attendanceSaved === attendanceDate && (
           <div className="mb-4 px-4 py-3 rounded-xl border text-sm flex items-start gap-3 bg-green-50 border-green-200 text-green-700">
             <div className="flex-1">
               <span className="font-semibold">Attendance saved.</span>{" "}
               <span>
-                No fine is charged by saving — use <span className="font-medium">Add fine</span> in the
-                Late Fine column for anyone who should be charged for arriving late.
+                Times and any fine changes on this sheet are written. Use{" "}
+                <span className="font-medium">Add fine</span> in the Late Fine column to mark someone
+                for a late-arrival fine, then save again.
               </span>
             </div>
             <button onClick={() => setAttendanceSaved(null)} className="text-xs underline shrink-0">Dismiss</button>
-          </div>
-        )}
-
-        {/* What this day actually costs, once something has been charged. */}
-        {dayFines.length > 0 && (
-          <div className="mb-4 px-4 py-3 rounded-xl border text-sm bg-red-50 border-red-200 text-red-700">
-            <span className="font-semibold">
-              {dayFines.length} late fine{dayFines.length !== 1 ? "s" : ""} charged on this day ({fmt(chargedTotal)})
-            </span>
-            <ul className="mt-1 space-y-0.5 text-xs">
-              {dayFines.map((f) => (
-                <li key={f.id}>
-                  {f.staff?.name ?? staffMap[f.staff_id]?.name ?? "—"} — {fmt(f.amount)} · {f.reason}
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
@@ -971,23 +994,26 @@ export default function StaffPage() {
                 : activeStaff.map((s, idx) => {
                   const entry = attendanceMap[s.id] ?? { status: "absent" as AttendanceStatus, check_in_time: "" };
                   // No time typed on today's sheet, and not already marked in?
-                  // Saving stamps the current time, so judge the preview on
-                  // that — it is the fine the Save button is about to charge.
+                  // Saving stamps the current time — the time box says so.
                   const wasIn     = savedStatus[s.id] !== undefined && savedStatus[s.id] !== "absent";
                   const willStamp = !entry.check_in_time && entry.status !== "absent" && isToday && !wasIn;
-                  const against   = entry.check_in_time || (willStamp ? nowHHMM : null);
-                  const late      = entry.status === "absent" ? null : minutesLate(against, fineRule);
-                  // Past the grace period is the one you would normally charge;
-                  // the link is offered for any lateness at all, because whether
-                  // 20 minutes is worth Rs 200 is the counter's call now, not a
-                  // threshold's.
-                  const overGrace = late !== null && late > fineRule.grace_minutes;
-                  const charged   = fineFor(s.id);
+                  // The Late Fine column does **not** work out or show how late
+                  // anyone is. It is a charge, not a report: the check-in time is
+                  // in the next column and the manager reads it themselves. (It
+                  // used to preview "31 min late", in red past the grace period,
+                  // which only answered a question the time already answers.)
+                  //
                   // Anyone who turned up can be charged, late-looking or not —
-                  // the clock suggests, the manager decides. Only Absent has no
-                  // late fine to speak of (and the backend refuses it too).
+                  // the manager decides. Only Absent has no late fine to speak
+                  // of (and the backend refuses it too).
                   const canFine   = entry.status !== "absent";
-                  const busy      = fineBusyFor === s.id;
+                  // What the server has, what the manager has asked for, and
+                  // what the row therefore ends up as once this is saved.
+                  const onServer    = fineFor(s.id);
+                  const wanted      = fineIntent[s.id];
+                  const willCharge  = wanted ?? onServer !== undefined;
+                  const pendingAdd  = wanted === true  && !onServer;
+                  const pendingDrop = wanted === false && !!onServer;
                   return (
                     <tr key={s.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-400 text-xs">{idx + 1}</td>
@@ -998,7 +1024,7 @@ export default function StaffPage() {
                       <td className="px-5 py-3">
                         <select
                           value={entry.status}
-                          onChange={(e) => setAttendanceMap((prev) => ({ ...prev, [s.id]: { ...entry, status: e.target.value as AttendanceStatus } }))}
+                          onChange={(e) => setStatus(s, e.target.value as AttendanceStatus)}
                           className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-red ${ATTENDANCE_COLORS[entry.status]}`}>
                           {(Object.keys(ATTENDANCE_LABELS) as AttendanceStatus[]).map((st) => (
                             <option key={st} value={st}>{ATTENDANCE_LABELS[st]}</option>
@@ -1013,44 +1039,47 @@ export default function StaffPage() {
                           <span className="block text-[11px] text-gray-400 mt-0.5">stamps {nowHHMM} on save</span>
                         )}
                       </td>
-                      {/* Lateness is worked out here; the fine is only ever
-                          charged by pressing Add fine on this row. */}
+                      {/* Just the charge: the amount, and the one link that
+                          changes it. The links only *stage* a fine — Save
+                          Attendance is what charges or clears it. */}
                       <td className="px-5 py-3">
-                        {charged ? (
-                          <span className="inline-flex items-center gap-2">
-                            <span className="text-xs font-semibold text-red-600">
-                              {fmt(charged.amount)}
-                              <span className="block text-[11px] font-normal text-gray-400">
-                                {charged.minutes_late !== null ? `${charged.minutes_late} min late` : "charged"}
-                              </span>
-                            </span>
-                            <button onClick={() => handleRemoveLateFine(s)} disabled={busy}
-                              className="text-xs text-gray-500 hover:text-red-600 hover:underline font-medium disabled:opacity-40">
-                              {busy ? "…" : "Remove"}
-                            </button>
-                          </span>
-                        ) : canFine ? (
-                          <span className="inline-flex flex-col items-start gap-0.5">
-                            {late !== null && late > 0 && (
-                              <span className={`text-[11px] ${overGrace ? "text-red-500 font-medium" : "text-gray-400"}`}>
-                                {late} min late{willStamp ? " (at save)" : ""}
-                              </span>
-                            )}
-                            {/* Always offered, so the control is never invisible.
-                                Loud once past the grace period — that is the one
-                                you would normally charge — and quiet otherwise. */}
-                            <button onClick={() => handleAddLateFine(s)} disabled={busy}
-                              title={`Charge ${fmt(fineRule.amount)} to ${s.name} for ${fmtDate(attendanceDate)}`}
-                              className={`text-xs font-medium hover:underline disabled:opacity-40 ${
-                                overGrace ? "text-red-600 hover:text-red-700" : "text-blue-600 hover:text-blue-800"
-                              }`}>
-                              {busy ? "Charging…" : `+ Add fine (${fmt(fineRule.amount)})`}
-                            </button>
-                          </span>
-                        ) : (
+                        {!canFine && !onServer ? (
                           // Absent: nothing to charge a *late* fine for.
                           <span className="text-xs text-gray-300"
                             title="Mark them in to charge a late fine">—</span>
+                        ) : (
+                          <span className="inline-flex flex-col items-start gap-0.5">
+                            {/* The money: what this row will cost once saved. A
+                                fine on its way out is struck through rather than
+                                vanishing, so the manager can see what Save does. */}
+                            {willCharge ? (
+                              <span className="text-xs font-semibold text-red-600">
+                                {fmt(onServer?.amount ?? fineRule.amount)}
+                              </span>
+                            ) : pendingDrop ? (
+                              <span className="text-xs font-semibold text-gray-400 line-through">
+                                {fmt(onServer!.amount)}
+                              </span>
+                            ) : null}
+
+                            {pendingAdd && <span className="text-[11px] text-amber-600">charges on save</span>}
+                            {pendingDrop && <span className="text-[11px] text-amber-600">removed on save</span>}
+
+                            {/* The action. Always offered for anyone marked in,
+                                so the control is never invisible. */}
+                            {willCharge ? (
+                              <button onClick={() => queueLateFine(s, false)}
+                                className="text-xs text-gray-500 hover:text-red-600 hover:underline font-medium">
+                                Remove
+                              </button>
+                            ) : canFine ? (
+                              <button onClick={() => queueLateFine(s, true)}
+                                title={`Charge ${fmt(fineRule.amount)} to ${s.name} for ${fmtDate(attendanceDate)} when you save`}
+                                className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline">
+                                + Add fine ({fmt(fineRule.amount)})
+                              </button>
+                            ) : null}
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -1059,26 +1088,25 @@ export default function StaffPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-gray-400 mt-3">
-          Attendance defaults to Absent. Marking someone in <span className="font-medium">is</span> their
-          check-in: leave the time blank and saving stamps the current time — only for people not
-          already marked in, so re-saving later never re-stamps the sheet. Type a time to override the
-          stamp; past days are never stamped, so type the time in when back-filling.
-          <br />
-          <span className="font-medium text-gray-500">Saving never charges a fine.</span> The Late Fine
-          column shows how late each person is against the {THE_SHIFT} shift — more than
-          {" "}{fineRule.grace_minutes} minutes past the start is flagged red (from {(() => {
-            const t = shiftStartMinutes(fineRule.default_shift_start) + fineRule.grace_minutes + 1;
-            return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-          })()}) — and <span className="font-medium">+ Add fine</span> charges {fmt(fineRule.amount)} for
-          that day, <span className="font-medium">Remove</span> takes it back off. The link is there for
-          anyone marked in, late or not; charging saves the sheet first if it needs to, and prices the
-          fine off the check-in time on the server. Absent rows have no late fine to charge.
-        </p>
 
-        {/* Previous Days History */}
+        {/* Save sits *below* the table and to the right, where the roster is
+            finished rather than where it starts: the counter works down the list
+            and the button is the next thing under their hand at the bottom. */}
+        <div className="flex items-center justify-end gap-3 mt-4">
+          {pendingFineCount > 0 && (
+            <span className="text-xs text-amber-600">
+              {pendingFineCount} fine change{pendingFineCount !== 1 ? "s" : ""} not saved yet
+            </span>
+          )}
+          <button onClick={handleSaveAttendance} disabled={attendanceSaving || attendanceLoading}
+            className="px-5 py-2.5 text-sm font-medium bg-brand-red text-white rounded-lg hover:bg-brand-red-dark disabled:opacity-50">
+            {attendanceSaving ? "Saving…" : "Save Attendance"}
+          </button>
+        </div>
+
+        {/* Earlier days. No heading above them: each card is titled with its own
+            date, which says what the list is without labelling it. */}
         <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Previous Days</h3>
           <div className="space-y-3">
             {historyByDate.map(([date, records]) => (
               <div key={date} className="bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden">
@@ -1107,7 +1135,7 @@ export default function StaffPage() {
                             {role && <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[role] ?? "bg-gray-100 text-gray-600"}`}>{role}</span>}
                           </td>
                           <td className="px-5 py-2.5">
-                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${ATTENDANCE_COLORS[r.status]}`}>{ATTENDANCE_LABELS[r.status]}</span>
+                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${attendanceColor(r.status)}`}>{attendanceLabel(r.status)}</span>
                           </td>
                           <td className="px-5 py-2.5 text-gray-600 text-xs">{r.check_in_time ? r.check_in_time.slice(0, 5) : "—"}</td>
                         </tr>

@@ -371,45 +371,121 @@ Late-arrival money lives across two tabs, and the split is the point: **Attendan
 late, the manager decides who pays.**
 
 ### Charging a late fine (Attendance tab)
-**Saving attendance charges nothing** (see `genz-rms-apis` → "Late fines"). It used to fine everyone
-past the grace period on save; now the **Late Fine** column carries a link per row:
+
+**The sheet behaves like one form: Add fine / Remove write nothing, and `saveAttendance` commits the
+times and the fines together.** Those links only set `fineIntent[staffId]` — `true` = charge this one
+on save, `false` = take it back off, absent from the map = no pending change. The row renders
+`wanted ?? onServer !== undefined`, so it shows what it *will* be once saved, with an amber
+"charges on save" / "removed on save" note and a struck-through amount for one on its way out.
+A fine clicked by mistake therefore costs nothing — click the other link.
+
+`saveAttendance` does, in order: `POST /staff-attendance/bulk`, then one request per **genuine**
+difference between `fineIntent` and `dayFines` (clicking Add then Remove cancels out and costs no
+request), then `await fetchDayFines()` so the screen shows what the server actually holds.
+- **Attendance goes first and that is load-bearing**: the API prices a fine off the *stored* check-in
+  time and 422s a day with no attendance saved, so the times must be down before the charge is asked
+  for.
+- A per-person failure is reported by name and **keeps that row's pending change** (`stuck`), so a
+  retry is pressing Save again rather than re-clicking every link. Only the rows that succeeded are
+  cleared.
+- Switching day clears `fineIntent` along with `dayFines` — the staged changes were about the day
+  being left.
+- Marking someone **Absent drops a queued fine** (`setStatus`), since you can't be late for a day you
+  never came in on and the API refuses it. A fine *already charged* stays on screen with its Remove
+  link, so it can be taken off deliberately rather than silently.
+- The Save row sits below the table, right-aligned, and shows "N fine changes not saved yet" when
+  there are any.
+
+Everything below describes what the links mean; the writes all happen in `saveAttendance`.
+
+**Saving attendance charges no fine by itself** (see `genz-rms-apis` → "Late fines") — it only
+applies what was staged. It used to fine everyone past the grace period automatically. The **Late
+Fine** column carries a link per row:
 - **`+ Add fine (Rs 200)`** → `POST /staff-fines/late` `{ staff_id, fine_date }`. **Shown on every row
-  that isn't Absent**, late-looking or not — the clock suggests, the manager decides, and whether 20
-  minutes is worth charging is the counter's call. Past the grace period the button and the minutes
-  go red, so the one you would normally charge still stands out.
+  that isn't Absent**, late-looking or not — the manager decides, and whether 20 minutes is worth
+  charging is the counter's call.
+- **The column shows no lateness.** It is a charge, not a report: the amount, a pending note, and the
+  one link that changes it. It used to preview *"31 min late"* off a ticking clock, in red past the
+  grace period, and show the stored `minutes_late` on a charged row — all removed, along with the
+  `against` / `late` / `overGrace` row arithmetic behind it. The check-in time is in the next column
+  and answers the question already. Don't reinstate it.
 - **`Remove`** beside a charged fine → `DELETE /staff-fines/late?staff_id=&fine_date=`. The only way
   a fine comes back off from this screen.
-- **Add fine saves the sheet first, every time.** The backend prices the fine off the *stored*
-  check-in time, so `handleAddLateFine` calls `saveAttendance({ quiet: true })` and only charges if
-  that landed. `quiet` suppresses the green "Attendance saved — no fine is charged by saving" note,
-  which would be the opposite of what just happened.
-  - Gating the *link* on a prior save instead was a mistake worth not repeating: the first cut showed
-    dead text (*"save to charge"*) until someone pressed Save, and on a fresh sheet — where every row
-    defaults to Absent — the column was a row of dashes, so the feature read as missing entirely.
-  - Saving unconditionally (rather than only when the row is absent from the sheet) also keeps the
-    fine matching the screen: a row edited since the last save would otherwise be priced off the old
-    stored time, or 422 as "marked Absent" while the screen says Present.
-  - Pressing Add twice is safe — the backend re-prices rather than stacking.
+- **Add and Remove are mutually exclusive**, and the branch that decides is
+  `willCharge ? Remove : canFine ? Add fine : null` where
+  `willCharge = wanted ?? onServer !== undefined`. If a charged row is ever seen offering **Add
+  fine**, the fine lookup is failing, not the branch.
+  - ⚠ **That lookup broke once on a type, and it cost real money.** `fineFor()` matches by identity
+    (`Number(f.staff_id) === s.id`) while `staff_id` had no cast on `StaffFine`, so under some PDO
+    setups it arrived as a *string*, the match failed silently, and a person already fined kept an
+    Add fine link — pressing it charged them twice. Fixed in three places, deliberately overlapping:
+    the model casts `staff_id` to integer, `normalizeFines()` coerces every fine the tab ingests
+    (so the screen is right against an API that hasn't been redeployed), and the identity sites
+    (`fineFor`, the two `Set`s) call `Number()` themselves.
+  - The giveaway was that the **summary banner showed the right name** while the row offered Add:
+    `staffMap[f.staff_id]` is an object index, which coerces `"5"` to `5`, whereas `===` does not.
+    Anything the frontend compares by identity rather than indexes by must arrive typed.
+- **Pressing Add twice is safe** — the backend re-prices rather than stacking, under a row lock.
+- Two earlier cuts of this, both wrong, for the record: the first **gated the link** on the row
+  already being saved, which showed dead text (*"save to charge"*) and left a fresh sheet — every row
+  defaulting to Absent — as a column of dashes, so the feature read as missing entirely. The second
+  had Add fine **save the sheet and charge immediately**; that worked but made the link a write, so a
+  misclick had already taken money off someone. Staging is the version that matches how the rest of
+  the sheet behaves.
 - `fetchDayFines()` **returns its promise** and `saveAttendance` awaits it, or the re-read a save
   starts can land after the charge made right behind it and wipe the new fine off the screen.
+- **A failed `fetchDayFines()` keeps its last list** rather than clearing to `[]`. Clearing showed
+  every charged row as uncharged — offering Add fine to someone already fined, which is how a dropped
+  request turns into a double charge. The stale-day case is handled the other way round: the
+  tab/date effect clears `dayFines` before fetching, so switching day can't leave yesterday's fines
+  on screen. (The real guarantee is server-side — `charge()` locks the row — but the UI should not
+  be inviting the click.)
+- **No "Mark All Present".** Removed along with `markAllPresent()`: it set every active staff member
+  to Present in one press, on a screen where the counter marks each person *as they walk in* and
+  where a blank time means "stamp them now". One press could therefore mark and stamp the whole
+  roster as having arrived at that moment.
+- **Save Attendance sits below the table, right-aligned**, not in the date header — the counter works
+  down the roster and the button is under their hand when they reach the bottom. The header is now
+  date navigation only.
 - **Absent rows show `—`** (with a tooltip saying to mark them in). You cannot be late for a day you
   missed, and the backend refuses it too.
 - `dayFines` holds the day's late fines, fetched per date with
   `GET /staff-fines?from=&to=&source=auto_late` — **narrowed to late fines on purpose**, so a manual
   fine on the same day isn't offered here as something this screen can remove. It is re-read after a
   save, because the stamp a save writes changes who looks late.
-- Two notes above the table: a green *"Attendance saved — no fine is charged by saving"* (which says
-  so explicitly, because this screen used to behave the other way and a manager who remembers that
-  needs telling where the money went), and a red summary of what **is** charged on the day.
+- **One note above the table**, and nothing else: a green *"Attendance saved"* confirmation (saying
+  that times **and** fine changes were written). The red *"N late fines charged on this day (Rs 200)"*
+  summary that listed each charged person was removed along with its `chargedTotal` — every row
+  already shows its own charge, so the banner only restated the column above it.
+- **Nothing below the Save button** either — the long explanatory paragraph that used to sit there was
+  removed; the per-row amber "charges on save" / "removed on save" notes and the pending count beside
+  Save say the same thing where the manager is actually looking. Don't put either back.
+- **No redundant labels on this tab.** The date header is the arrows plus the picker, with no
+  `fmtDate(attendanceDate)` repeated beside it (the picker already shows the date), and the earlier-days
+  list has no "Previous Days" heading (each card is titled with its own date). Same principle both
+  times: don't label what the control already says.
+- `dayFines` itself **stays** — it is what `fineFor()` and the save-time diff read, so it is
+  load-bearing for whether a row shows Add or Remove, not just display.
 
 ### Attendance mechanics (unchanged)
 - **Nobody types check-in times.** Marking someone in *is* the check-in — saving stamps the current
   time server-side (today only, and only for someone not already marked in). Rows about to be
   stamped say *"stamps 17:30 on save"* under the time box. Typing a time overrides the stamp.
-- The column shows lateness live, ticking each minute (`clockTick`): `minutesLate()` /
-  `shiftStartMinutes()` at the top of `page.tsx` mirror `LateFineService`. Typing a time also moves
-  the row off Absent by itself — to **Late** past the grace period, **Present** inside it (Half Day
-  is left alone). **That status is not a charge**; it is the record saying they arrived late.
+- `clockTick` ticks each minute for that *"stamps 17:30 on save"* hint and **nothing else** now —
+  it used to drive a live lateness preview in the Late Fine column.
+- **Three statuses: Present / Absent / Half Day.** `late` is gone from `AttendanceStatus`, the
+  labels, the colours and the dropdown (and from the API — see `genz-rms-apis`, which also converts
+  existing rows). `setCheckIn` now just moves a row off Absent to **Present** when a time is typed;
+  it used to sort the time into Present vs Late by the grace period. Half Day still stands, and
+  clearing the box leaves the status alone.
+- **No lateness arithmetic is left in this file.** `minutesLate()`, `shiftStartMinutes()` and
+  `toMinutes()` mirrored `LateFineService` for the preview and the Present/Late split; both callers
+  are gone, so all three were deleted and `FineRule` is down to `{ amount }` (the endpoint still
+  returns `grace_minutes` and `default_shift_start`; nothing reads them). The backend is the only
+  thing that computes lateness now.
+- `attendanceLabel()` / `attendanceColor()` fall back to the raw status, so a history row still
+  carrying `late` renders readably in the window between deploying this and running the conversion
+  migration, instead of a blank badge.
 - **One shift, and neither function takes a staff member.** `THE_SHIFT` (`1PM–1AM`) is the label;
   the clock comes from `rule.default_shift_start`. Both helpers used to parse a per-person
   `staff.shift` string so a second shift could start at 17:00 — there is no second shift, so that is
