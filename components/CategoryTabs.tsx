@@ -22,8 +22,15 @@ export default function CategoryTabs({ categories, activeId, onSelect }: Props) 
                 disabled={disabled}
                 onClick={() => onSelect(cat.id)}
                 className={[
-                  "w-full rounded-lg px-3 py-3 text-left text-sm font-medium transition",
-                  "min-h-[48px]",
+                  // 10px of vertical padding (`py-2.5` is exactly 10px).
+                  //
+                  // `min-h` tracks the natural single-line height
+                  // (10 + 10 + ~18px ≈ 38px) so it stays a floor and never
+                  // inflates the row. Change the padding here and this moves with
+                  // it: it was once 48px, which *was* the height, and the padding
+                  // couldn't be seen past it at all.
+                  "w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition",
+                  "min-h-[38px]",
                   disabled
                     ? "cursor-not-allowed text-gray-300"
                     : isActive
