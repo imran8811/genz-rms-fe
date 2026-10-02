@@ -365,33 +365,73 @@ row fits the screen but not one line.
 - The order slide-over is `w-full max-w-[520px]`; as a fixed `w-[520px]` it hung its left third off
   a 375px screen, anchored right, with nothing to scroll.
 
-## Staff → Fines tab (`/staff`)
+## Staff → Attendance & Fines (`/staff`)
 
-Sits between Advances and Food, and is where late-arrival money shows up. The **fine is charged by
-the backend when attendance is saved** (see `genz-rms-apis` → "Late fines"); this tab is the
-register plus manual CRUD (add / edit / delete any fine — breakage, uniform, whatever).
-- Rows are badged **Late** (`source: auto_late`, written by the attendance sync) or **Manual**.
-  Editing a Late row warns that re-saving that day's attendance will overwrite it — the durable fix
-  is correcting the check-in time.
+Late-arrival money lives across two tabs, and the split is the point: **Attendance decides who was
+late, the manager decides who pays.**
+
+### Charging a late fine (Attendance tab)
+**Saving attendance charges nothing** (see `genz-rms-apis` → "Late fines"). It used to fine everyone
+past the grace period on save; now the **Late Fine** column carries a link per row:
+- **`+ Add fine (Rs 200)`** → `POST /staff-fines/late` `{ staff_id, fine_date }`. **Shown on every row
+  that isn't Absent**, late-looking or not — the clock suggests, the manager decides, and whether 20
+  minutes is worth charging is the counter's call. Past the grace period the button and the minutes
+  go red, so the one you would normally charge still stands out.
+- **`Remove`** beside a charged fine → `DELETE /staff-fines/late?staff_id=&fine_date=`. The only way
+  a fine comes back off from this screen.
+- **Add fine saves the sheet first, every time.** The backend prices the fine off the *stored*
+  check-in time, so `handleAddLateFine` calls `saveAttendance({ quiet: true })` and only charges if
+  that landed. `quiet` suppresses the green "Attendance saved — no fine is charged by saving" note,
+  which would be the opposite of what just happened.
+  - Gating the *link* on a prior save instead was a mistake worth not repeating: the first cut showed
+    dead text (*"save to charge"*) until someone pressed Save, and on a fresh sheet — where every row
+    defaults to Absent — the column was a row of dashes, so the feature read as missing entirely.
+  - Saving unconditionally (rather than only when the row is absent from the sheet) also keeps the
+    fine matching the screen: a row edited since the last save would otherwise be priced off the old
+    stored time, or 422 as "marked Absent" while the screen says Present.
+  - Pressing Add twice is safe — the backend re-prices rather than stacking.
+- `fetchDayFines()` **returns its promise** and `saveAttendance` awaits it, or the re-read a save
+  starts can land after the charge made right behind it and wipe the new fine off the screen.
+- **Absent rows show `—`** (with a tooltip saying to mark them in). You cannot be late for a day you
+  missed, and the backend refuses it too.
+- `dayFines` holds the day's late fines, fetched per date with
+  `GET /staff-fines?from=&to=&source=auto_late` — **narrowed to late fines on purpose**, so a manual
+  fine on the same day isn't offered here as something this screen can remove. It is re-read after a
+  save, because the stamp a save writes changes who looks late.
+- Two notes above the table: a green *"Attendance saved — no fine is charged by saving"* (which says
+  so explicitly, because this screen used to behave the other way and a manager who remembers that
+  needs telling where the money went), and a red summary of what **is** charged on the day.
+
+### Attendance mechanics (unchanged)
 - **Nobody types check-in times.** Marking someone in *is* the check-in — saving stamps the current
   time server-side (today only, and only for someone not already marked in). Rows about to be
-  stamped say *"stamps 17:30 on save"* under the time box, and the Late Fine column previews what
-  that stamp will cost, ticking each minute (`clockTick`). Typing a time overrides the stamp.
-  `savedStatus` holds the status as the server last stored it, which is what tells the preview
-  apart "present since 1pm, no time recorded" (no stamp) from "being marked in now" (stamp).
+  stamped say *"stamps 17:30 on save"* under the time box. Typing a time overrides the stamp.
+- The column shows lateness live, ticking each minute (`clockTick`): `minutesLate()` /
+  `shiftStartMinutes()` at the top of `page.tsx` mirror `LateFineService`. Typing a time also moves
+  the row off Absent by itself — to **Late** past the grace period, **Present** inside it (Half Day
+  is left alone). **That status is not a charge**; it is the record saying they arrived late.
+- **One shift, and neither function takes a staff member.** `THE_SHIFT` (`1PM–1AM`) is the label;
+  the clock comes from `rule.default_shift_start`. Both helpers used to parse a per-person
+  `staff.shift` string so a second shift could start at 17:00 — there is no second shift, so that is
+  gone. The staff form shows the shift as **read-only text** rather than a dropdown (nothing to
+  choose), and both adding and editing someone submit `THE_SHIFT`, so editing a staff member with a
+  stale shift quietly normalises them.
+- `savedStatus` holds the status as the server last stored it, which is what tells
+  "present since 1pm, no time recorded" (no stamp) apart from "being marked in now" (stamp) — and
+  now also whether Add fine has to save the sheet before it can charge.
 - The time box is the browser's native widget, so a 12-hour locale renders a stored `17:45` as
   **`05:45 PM`** — that is display, not data.
-- The **Attendance tab previews the fine live**: `minutesLate()` / `shiftStartMinutes()` at the top
-  of `page.tsx` mirror `LateFineService`, so a check-in past the grace period shows *Rs 200 · 31 min
-  late* in a "Late Fine" column before anything is saved. Typing a check-in time also moves the row
-  off Absent by itself — to **Late** past the grace period, **Present** inside it (Half Day is left
-  alone).
 - The rule's numbers come from `GET /staff-fines/rule` (fetched once into `fineRule`), never
-  hardcoded in the UI beyond a fallback — so changing `late_fine_amount` in settings changes what
-  the screen quotes.
-- After Save, `POST /staff-attendance/bulk` answers `{ records, fines }` and the tab shows a banner
-  listing what was just charged — or "no late fines for this day", so a manager who expected one
-  can see the rule didn't fire.
+  hardcoded in the UI beyond a fallback — so changing `late_fine_amount` in settings changes both
+  what the screen quotes and what Add fine charges.
+
+### Fines tab
+Sits between Advances and Food: the register, plus manual CRUD (add / edit / delete any fine —
+breakage, uniform, whatever).
+- Rows are badged **Late** (`source: auto_late`, charged from the Attendance tab) or **Manual**.
+  The stored value is still `auto_late` for historical reasons; nothing is automatic any more.
+- Editing a Late row notes that the edit **sticks** — attendance saves no longer rewrite it — but
+  that pressing Add fine on that day again re-prices it from the rule.
 - Payroll carries a **−Fines** column; final salary subtracts it alongside food and advances.
 
 ## Inventory (`/inventory`) — stock for the things you resell
