@@ -1611,8 +1611,14 @@ export default function StaffPage() {
     // Final salary = earnings for present days, minus short leaves (½-day),
     // food and advance deductions. Absents are excluded by simply not being
     // paid (not double-penalised against the full salary).
+    // Earnings come from the exact salary, not `daily_rate`: that is rounded for
+    // display (10000/30 → 333), and 333 × 30 days pays 9990 for a full month.
+    const earned = (r: PayrollRow) =>
+      payroll && payroll.working_days > 0
+        ? Math.round((r.base_salary * r.present_days) / payroll.working_days)
+        : 0;
     const finalSalary = (r: PayrollRow) =>
-      r.daily_rate * r.present_days - r.half_day_deduct - r.food_deduct - r.advance_deduct - r.fine_deduct;
+      earned(r) - r.half_day_deduct - r.food_deduct - r.advance_deduct - r.fine_deduct;
     const totalFinal = payroll ? payroll.staff.reduce((sum, r) => sum + finalSalary(r), 0) : 0;
 
     return (
@@ -1709,7 +1715,7 @@ export default function StaffPage() {
                           <div className="grid grid-cols-4 gap-4 text-xs text-gray-600">
                             <div><span className="font-medium text-gray-700">Daily Rate:</span> {fmt(row.daily_rate)}</div>
                             <div><span className="font-medium text-gray-700">Present Days:</span> {row.present_days}</div>
-                            <div><span className="font-medium text-gray-700">Earned (Present):</span> <span className="text-gray-800 font-semibold">{fmt(row.daily_rate * row.present_days)}</span></div>
+                            <div><span className="font-medium text-gray-700">Earned (Present):</span> <span className="text-gray-800 font-semibold">{fmt(earned(row))}</span></div>
                             <div><span className="font-medium text-gray-700">Short Leave (½-day):</span> <span className="text-red-500">−{fmt(row.half_day_deduct)}</span></div>
                             <div><span className="font-medium text-gray-700">Food Deduct:</span> <span className="text-red-500">−{fmt(row.food_deduct)}</span></div>
                             <div><span className="font-medium text-gray-700">Advance Deduct:</span> <span className="text-red-500">−{fmt(row.advance_deduct)}</span></div>
