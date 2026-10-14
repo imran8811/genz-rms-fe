@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
+import { RequireAdmin } from "@/lib/auth";
 
 /**
  * One row per trading day from `GET /sales/daily`: the till's own sales beside
@@ -46,6 +47,14 @@ function LoadingRow() {
 }
 
 export default function DailySalesPage() {
+  return (
+    <RequireAdmin>
+      <DailySalesContent />
+    </RequireAdmin>
+  );
+}
+
+function DailySalesContent() {
   const [rows, setRows] = useState<DailyRow[]>([]);
   /** `undefined` = first page not fetched yet; `null` = no more history. */
   const [cursor, setCursor] = useState<string | null | undefined>(undefined);

@@ -356,7 +356,8 @@ Sidebar entry right under Sales. One row per day, newest first: **Sales** (every
 that isn't Food Panda) beside **Food Panda Sales**, from `GET /sales/daily`. Infinite scroll is an
 `IntersectionObserver` on a sentinel row, rooted on the page's own scroll container; the observer is
 rebuilt whenever the `next_before` cursor moves, so a page that doesn't fill a tall screen pulls the
-next one without a scroll. It stops on an error until **Retry**. The route is `/daily-sales`, not
+next one without a scroll. It stops on an error until **Retry**. **Admin only**: `adminOnly` in the
+sidebar, `RequireAdmin` on the page, and the API 403s anyone else. The route is `/daily-sales`, not
 `/sales/daily`, because the sidebar's active check is `startsWith`. Not on `KITCHEN_ROUTES`.
 
 ## Sales (`/sales`) on a phone

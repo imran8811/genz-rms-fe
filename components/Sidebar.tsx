@@ -88,6 +88,7 @@ const navGroups: {
         // `startsWith`, so a sub-path would light up Sales as well.
         href: "/daily-sales",
         label: "Daily Sales",
+        adminOnly: true,
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 flex-shrink-0">
             <rect x="3" y="4" width="18" height="17" rx="2"/>
