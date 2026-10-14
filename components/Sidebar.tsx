@@ -84,6 +84,18 @@ const navGroups: {
         ),
       },
       {
+        // `/daily-sales`, not `/sales/daily`: the active-link check is
+        // `startsWith`, so a sub-path would light up Sales as well.
+        href: "/daily-sales",
+        label: "Daily Sales",
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5 flex-shrink-0">
+            <rect x="3" y="4" width="18" height="17" rx="2"/>
+            <path d="M3 9h18M8 2v4M16 2v4M7 13h4M7 17h7"/>
+          </svg>
+        ),
+      },
+      {
         // `kitchen: true`, but read-only for that login: its own board's ⚠ tab
         // only covers today, and looking back over a run of complaints is a
         // kitchen question. Closing one off is still the front desk's and

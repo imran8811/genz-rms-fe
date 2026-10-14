@@ -350,6 +350,15 @@ Making it exact needs a `staff_id` (or a flag) on `orders`, set at the till — 
 as the Walk-in/WhatsApp distinction above. The **stat card and the Cash figure are not affected**:
 those come from `staff_food_logs` via `GET /sales/summary` and are real.
 
+## Daily Sales (`/daily-sales`)
+
+Sidebar entry right under Sales. One row per day, newest first: **Sales** (every completed order
+that isn't Food Panda) beside **Food Panda Sales**, from `GET /sales/daily`. Infinite scroll is an
+`IntersectionObserver` on a sentinel row, rooted on the page's own scroll container; the observer is
+rebuilt whenever the `next_before` cursor moves, so a page that doesn't fill a tall screen pulls the
+next one without a scroll. It stops on an error until **Retry**. The route is `/daily-sales`, not
+`/sales/daily`, because the sidebar's active check is `startsWith`. Not on `KITCHEN_ROUTES`.
+
 ## Sales (`/sales`) on a phone
 
 The date nav is a **desktop control**. The page header (title + date arrows/picker + the four
